@@ -1,0 +1,27 @@
+kind = "web"
+previewPath = "/"
+title = "Jamia Portal"
+version = "1.0.0"
+id = "artifacts/jamia-portal"
+router = "path"
+
+[[services]]
+name = "web"
+paths = [ "/" ]
+localPort = 23639
+
+[services.development]
+run = "pnpm --filter @workspace/jamia-portal run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/jamia-portal", "run", "build" ]
+serve = "static"
+publicDir = "artifacts/jamia-portal/dist/public"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "23639"
+BASE_PATH = "/"
