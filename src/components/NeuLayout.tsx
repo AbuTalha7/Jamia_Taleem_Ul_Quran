@@ -18,6 +18,7 @@ import {
   Globe,
   CalendarRange,
   ChevronDown,
+  HandCoins,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
@@ -47,6 +48,7 @@ export default function NeuLayout({ children }: { children: React.ReactNode }) {
     { path: '/admin/madrasa',      icon: BookOpen,        label: t('madrasa') },
     { path: '/admin/school',       icon: Building2,       label: t('school') },
     { path: '/admin/fees',         icon: CreditCard,      label: t('fees') },
+    { path: '/admin/chanda',       icon: HandCoins,       label: t('chanda') },
     { path: '/admin/results',      icon: FileSpreadsheet, label: t('results') },
     { path: '/admin/announcements',icon: Bell,            label: t('announcements') },
     { path: '/admin/reports',      icon: BarChart3,       label: t('reports') },

@@ -130,7 +130,7 @@ export default function Settings() {
   const madrasaRanges = state.rollNumberRanges.filter(r => r.department === 'madrasa');
   const hasEdits = Object.keys(rangeEdits).length > 0;
 
-  const classOptions = subjectDepartment === 'school' ? [...SCHOOL_CLASSES] : [...MADRASA_CLASSES];
+  const classOptions: string[] = subjectDepartment === 'school' ? [...SCHOOL_CLASSES] : [...MADRASA_CLASSES];
 
   const defaultSubjectsForDepartment = useMemo(
     () => subjectDepartment === 'madrasa'

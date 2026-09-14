@@ -12,6 +12,11 @@ export default function Reports() {
   const viewSession = getViewSession();
   const activeSession = getActiveSession();
   const sessionName = viewSession?.name ?? undefined;
+  const labels = isUrdu ? {
+    roster: 'طالبات کی فہرست', allStudents: 'تمام طالبات', roll: 'رول نمبر', name: 'نام', father: 'والد کا نام', address: 'پتہ', className: 'جماعت', department: 'شعبہ', phone: 'فون', status: 'حالت', printed: 'پرنٹ کی تاریخ', fee: 'فیس رپورٹ', paid: 'ادا شدہ', pending: 'زیر التواء', records: 'ریکارڈز', madrasa: 'مدرسہ رپورٹ', students: 'طالبات', excel: 'طالبات کا ڈیٹا',
+  } : {
+    roster: 'Student Roster', allStudents: 'All Students', roll: 'Roll No', name: 'Name', father: 'Father Name', address: 'Address', className: 'Class', department: 'Dept', phone: 'Phone', status: 'Status', printed: 'Printed on', fee: 'Fee Collection Report', paid: 'Paid', pending: 'Pending', records: 'records', madrasa: 'Madrasa Report', students: 'students', excel: 'Students',
+  };
 
   const students = getStudentsForView();
   const feeStudentIds = state.viewSessionId
@@ -28,9 +33,9 @@ export default function Reports() {
       <head><meta charset="utf-8"/><title>Student Roster</title>${PRINT_STYLES}</head>
       <body>
         ${institutionHeader(sessionName)}
-        <div class="section-title">Student Roster — All Students (${students.length})${sessionName ? ` | Session: ${sessionName}` : ''}</div>
+        <div class="section-title">${labels.roster} — ${labels.allStudents} (${students.length})${sessionName ? ` | ${sessionName}` : ''}</div>
         <table>
-          <thead><tr><th>#</th><th>Roll No</th><th>Name</th><th>Father Name</th><th>Class</th><th>Dept</th><th>Phone</th><th>Status</th></tr></thead>
+          <thead><tr><th>#</th><th>${labels.roll}</th><th>${labels.name}</th><th>${labels.father}</th><th>${labels.address}</th><th>${labels.className}</th><th>${labels.department}</th><th>${labels.phone}</th><th>${labels.status}</th></tr></thead>
           <tbody>
             ${students.map((s, i) => `
               <tr>
@@ -38,6 +43,7 @@ export default function Reports() {
                 <td style="font-family:monospace;font-weight:bold">${s.rollNo || '-'}</td>
                 <td>${s.name}</td>
                 <td>${s.fatherName || '-'}</td>
+                <td>${s.address || '-'}</td>
                 <td class="${MADRASA_CLASSES.includes(s.class as (typeof MADRASA_CLASSES)[number]) ? 'urdu' : ''}" dir="${MADRASA_CLASSES.includes(s.class as (typeof MADRASA_CLASSES)[number]) ? 'rtl' : 'ltr'}">${s.class}</td>
                 <td>${s.department === 'madrasa' ? 'Madrasa' : 'School'}</td>
                 <td style="font-family:monospace">${s.phone || '-'}</td>
@@ -45,7 +51,7 @@ export default function Reports() {
               </tr>`).join('')}
           </tbody>
         </table>
-        <p class="footer-note">Printed on ${new Date().toLocaleDateString()}</p>
+        <p class="footer-note">${labels.printed} ${new Date().toLocaleDateString(isUrdu ? 'ur-PK' : 'en-PK')}</p>
       </body></html>`;
     printHTML(html, 'Student_Roster');
   };
@@ -65,11 +71,11 @@ export default function Reports() {
       <head><meta charset="utf-8"/><title>Fee Report</title>${PRINT_STYLES}</head>
       <body>
         ${institutionHeader(sessionName)}
-        <div class="section-title">Fee Collection Report${sessionName ? ` — ${sessionName}` : ''}</div>
+        <div class="section-title">${labels.fee}${sessionName ? ` — ${sessionName}` : ''}</div>
         <div style="display:flex;gap:20px;margin-bottom:14px;font-size:13px;font-weight:bold">
-          <span style="color:#1a7a45">✔ Paid: Rs. ${totalPaid.toLocaleString()}</span>
-          <span style="color:#b85c00">⏳ Pending: Rs. ${totalPending.toLocaleString()}</span>
-          <span>Total: ${records.length} records</span>
+          <span style="color:#1a7a45">${labels.paid}: Rs. ${totalPaid.toLocaleString()}</span>
+          <span style="color:#b85c00">${labels.pending}: Rs. ${totalPending.toLocaleString()}</span>
+          <span>${records.length} ${labels.records}</span>
         </div>
         <table>
           <thead><tr><th>#</th><th>Roll No</th><th>Student</th><th>Class</th><th>Month</th><th>Amount</th><th>Status</th></tr></thead>
@@ -86,7 +92,7 @@ export default function Reports() {
               </tr>`).join('')}
           </tbody>
         </table>
-        <p class="footer-note">Printed on ${new Date().toLocaleDateString()}</p>
+        <p class="footer-note">${labels.printed} ${new Date().toLocaleDateString(isUrdu ? 'ur-PK' : 'en-PK')}</p>
       </body></html>`;
     printHTML(html, 'Fee_Report');
   };
@@ -96,10 +102,10 @@ export default function Reports() {
     const madrasaStudents = students.filter(s => s.department === 'madrasa');
     const html = `
       <!DOCTYPE html><html>
-      <head><meta charset="utf-8"/><title>Madrasa Report</title>${PRINT_STYLES}</head>
+      <head><meta charset="utf-8"/><title>${labels.madrasa}</title>${PRINT_STYLES}</head>
       <body>
         ${institutionHeader(sessionName)}
-        <div class="section-title">Madrasa Section — Class-wise Summary (${madrasaStudents.length} students)</div>
+        <div class="section-title">${labels.madrasa} — ${madrasaStudents.length} ${labels.students}</div>
         ${MADRASA_CLASSES.map(cls => {
           const clsStudents = madrasaStudents.filter(s => s.class === cls);
           if (clsStudents.length === 0) return '';
@@ -131,7 +137,7 @@ export default function Reports() {
     const sessionLabel = sessionName ?? 'All Sessions';
     downloadExcel(
       students.map(s => ({
-        'Roll No': s.rollNo || '-', Name: s.name, 'Father Name': s.fatherName,
+        'Roll No': s.rollNo || '-', Name: s.name, 'Father Name': s.fatherName, Address: s.address,
         DOB: s.dob, CNIC: s.cnic, Phone: s.phone, Class: s.class,
         Section: s.section, Department: s.department, Status: s.status,
         Session: sessionLabel,

@@ -3,15 +3,19 @@ import { useApp } from '@/store';
 import { FeeRecord } from '@/types';
 import { printHTML, PRINT_STYLES, institutionHeader } from '@/lib/print';
 import { toast } from 'sonner';
-import { Plus, Printer, Edit, Trash2 } from 'lucide-react';
+import { Plus, Printer, Edit, Trash2, Search } from 'lucide-react';
 
 export default function Fees() {
   const { state, dispatch, getFeeSummary, getViewSession, getActiveSession } = useApp();
   const isUrdu = state.language === 'ur';
   const viewSession = getViewSession();
   const activeSession = getActiveSession();
+  const printLabels = isUrdu
+    ? { receipt: 'فیس رسید', receiptNo: 'رسید نمبر:', student: 'طالبہ:', roll: 'رول نمبر:', className: 'جماعت:', month: 'ماہ:', description: 'تفصیل:', amount: 'رقم:', status: 'حالت:', ledger: 'فیس لیجر', paid: 'ادا شدہ', pending: 'زیر التواء', total: 'کل', records: 'ریکارڈز' }
+    : { receipt: 'Fee Receipt', receiptNo: 'Receipt No:', student: 'Student Name:', roll: 'Roll No:', className: 'Class:', month: 'Month:', description: 'Description:', amount: 'Amount:', status: 'Status:', ledger: 'Fee Ledger', paid: 'Paid', pending: 'Pending', total: 'Total', records: 'records' };
 
   const [monthFilter, setMonthFilter] = useState('');
+  const [studentSearch, setStudentSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'paid' | 'pending'>('all');
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingFee, setEditingFee] = useState<FeeRecord | null>(null);
@@ -36,6 +40,7 @@ export default function Fees() {
   const filteredRecords = allRecords.filter(f => {
     if (monthFilter && f.month !== monthFilter) return false;
     if (statusFilter !== 'all' && f.status !== statusFilter) return false;
+    if (studentSearch && !f.studentName.toLowerCase().includes(studentSearch.toLowerCase()) && !f.rollNo.toLowerCase().includes(studentSearch.toLowerCase())) return false;
     return true;
   });
 
@@ -45,23 +50,23 @@ export default function Fees() {
 
   const feeReceiptHTML = (f: typeof filteredRecords[0]) => `
     <!DOCTYPE html><html dir="${isUrdu ? 'rtl' : 'ltr'}">
-    <head><meta charset="utf-8"/><title>Fee Receipt</title>${PRINT_STYLES}</head>
+    <head><meta charset="utf-8"/><title>${printLabels.receipt}</title>${PRINT_STYLES}</head>
     <body>
       ${institutionHeader(viewSession?.name)}
       <div class="slip">
-        <h2>${isUrdu ? 'فیس رسید' : 'Fee Receipt'}</h2>
-        <div class="slip-row"><span class="slip-label">${isUrdu ? 'رسید نمبر:' : 'Receipt No:'}</span><span class="slip-value" style="font-family:monospace">${f.id.toUpperCase()}</span></div>
-        <div class="slip-row"><span class="slip-label">${isUrdu ? 'طالبہ:' : 'Student Name:'}</span><span class="slip-value">${f.studentName}</span></div>
-        <div class="slip-row"><span class="slip-label">${isUrdu ? 'رول نمبر:' : 'Roll No:'}</span><span class="slip-value" style="font-family:monospace;font-weight:bold">${f.rollNo}</span></div>
-        <div class="slip-row"><span class="slip-label">${isUrdu ? 'جماعت:' : 'Class:'}</span><span class="slip-value">${f.className}</span></div>
-        <div class="slip-row"><span class="slip-label">${isUrdu ? 'ماہ:' : 'Month:'}</span><span class="slip-value">${f.month}</span></div>
-        <div class="slip-row"><span class="slip-label">${isUrdu ? 'تفصیل:' : 'Description:'}</span><span class="slip-value">${f.description || 'Monthly Fee'}</span></div>
+        <h2>${printLabels.receipt}</h2>
+        <div class="slip-row"><span class="slip-label">${printLabels.receiptNo}</span><span class="slip-value" style="font-family:monospace">${f.id.toUpperCase()}</span></div>
+        <div class="slip-row"><span class="slip-label">${printLabels.student}</span><span class="slip-value">${f.studentName}</span></div>
+        <div class="slip-row"><span class="slip-label">${printLabels.roll}</span><span class="slip-value" style="font-family:monospace;font-weight:bold">${f.rollNo}</span></div>
+        <div class="slip-row"><span class="slip-label">${printLabels.className}</span><span class="slip-value">${f.className}</span></div>
+        <div class="slip-row"><span class="slip-label">${printLabels.month}</span><span class="slip-value">${f.month}</span></div>
+        <div class="slip-row"><span class="slip-label">${printLabels.description}</span><span class="slip-value">${f.description || (isUrdu ? 'ماہانہ فیس' : 'Monthly Fee')}</span></div>
         <div class="slip-row" style="font-size:16px;font-weight:bold;border-top:2px solid #1C2E6B;margin-top:6px;padding-top:10px">
-          <span class="slip-label">${isUrdu ? 'رقم:' : 'Amount:'}</span>
+          <span class="slip-label">${printLabels.amount}</span>
           <span class="slip-value">Rs. ${f.amount.toLocaleString()}</span>
         </div>
         <div class="slip-row">
-          <span class="slip-label">${isUrdu ? 'حالت:' : 'Status:'}</span>
+          <span class="slip-label">${printLabels.status}</span>
           <span class="slip-value"><span class="badge ${f.status === 'paid' ? 'badge-paid' : 'badge-pending'}">${f.status.toUpperCase()}</span></span>
         </div>
       </div>
@@ -70,14 +75,14 @@ export default function Fees() {
 
   const feeLedgerHTML = () => `
     <!DOCTYPE html><html dir="${isUrdu ? 'rtl' : 'ltr'}">
-    <head><meta charset="utf-8"/><title>Fee Ledger</title>${PRINT_STYLES}</head>
+    <head><meta charset="utf-8"/><title>${printLabels.ledger}</title>${PRINT_STYLES}</head>
     <body>
       ${institutionHeader(viewSession?.name)}
-      <div class="section-title">Fee Ledger${monthFilter ? ` — ${monthFilter}` : ''} (${filteredRecords.length} records)</div>
+      <div class="section-title">${printLabels.ledger}${monthFilter ? ` — ${monthFilter}` : ''} (${filteredRecords.length} ${printLabels.records})</div>
       <div style="display:flex;gap:20px;margin-bottom:14px;font-size:13px;font-weight:bold">
-        <span style="color:#1a7a45">✔ Paid: Rs. ${totalPaid.toLocaleString()}</span>
-        <span style="color:#b85c00">⏳ Pending: Rs. ${totalPending.toLocaleString()}</span>
-        <span>Total: Rs. ${totalAmount.toLocaleString()}</span>
+        <span style="color:#1a7a45">${printLabels.paid}: Rs. ${totalPaid.toLocaleString()}</span>
+        <span style="color:#b85c00">${printLabels.pending}: Rs. ${totalPending.toLocaleString()}</span>
+        <span>${printLabels.total}: Rs. ${totalAmount.toLocaleString()}</span>
       </div>
       <table>
         <thead><tr><th>#</th><th>Roll No</th><th>Student</th><th>Class</th><th>Month</th><th>Amount</th><th>Status</th></tr></thead>
@@ -98,9 +103,9 @@ export default function Fees() {
     </body></html>`;
 
   const handleSave = () => {
-    if (!formData.studentId) { toast.error('Please select a student'); return; }
-    if (!formData.month) { toast.error('Please select a month'); return; }
-    if (!formData.amount || formData.amount <= 0) { toast.error('Please enter a valid amount'); return; }
+    if (!formData.studentId) { toast.error(isUrdu ? 'طالبہ منتخب کریں' : 'Please select a student'); return; }
+    if (!formData.month) { toast.error(isUrdu ? 'ماہ منتخب کریں' : 'Please select a month'); return; }
+    if (!formData.amount || formData.amount <= 0) { toast.error(isUrdu ? 'درست رقم درج کریں' : 'Please enter a valid amount'); return; }
 
     const duplicate = state.feeRecords.find(fee =>
       fee.studentId === formData.studentId
@@ -170,6 +175,10 @@ export default function Fees() {
 
       {/* Filters */}
       <div className="flex flex-wrap gap-3">
+        <div className="neu-inset-sm rounded-xl px-3 flex items-center gap-2 h-11 w-full sm:w-72">
+          <Search className="w-4 h-4 opacity-40" />
+          <input className="bg-transparent outline-none text-sm w-full" placeholder={isUrdu ? 'نام یا رول نمبر سے تلاش...' : 'Search student name or roll no...'} value={studentSearch} onChange={e => setStudentSearch(e.target.value)} />
+        </div>
         <div className="neu-inset-sm rounded-xl px-3 py-1">
           <input type="month" className="bg-transparent border-none outline-none h-9 text-sm" value={monthFilter} onChange={e => setMonthFilter(e.target.value)} />
         </div>
@@ -179,6 +188,10 @@ export default function Fees() {
           </button>
         ))}
       </div>
+
+      {studentSearch && filteredRecords.length > 0 && (
+        <div className="neu-inset rounded-xl px-4 py-3 text-sm"><span className="font-semibold">Fee history:</span> {filteredRecords[0].studentName} <span className="opacity-60">({filteredRecords[0].rollNo || 'No roll number'}) - {filteredRecords.length} record{filteredRecords.length === 1 ? '' : 's'} found</span></div>
+      )}
 
       {/* Table */}
       <div className="neu-raised rounded-2xl overflow-hidden">
@@ -218,7 +231,7 @@ export default function Fees() {
                       <button onClick={() => { setEditingFee(f); setFormData({ ...f }); setDialogOpen(true); }} className="neu-btn w-8 h-8 rounded-lg flex items-center justify-center text-[#E4572E]">
                         <Edit className="w-3.5 h-3.5" />
                       </button>
-                      <button onClick={() => { dispatch({ type: 'DELETE_FEE_RECORD', payload: f.id }); toast.success('Deleted'); }} className="neu-btn w-8 h-8 rounded-lg flex items-center justify-center text-red-400">
+                      <button onClick={() => { dispatch({ type: 'DELETE_FEE_RECORD', payload: f.id }); toast.success(isUrdu ? 'حذف ہو گیا' : 'Deleted'); }} className="neu-btn w-8 h-8 rounded-lg flex items-center justify-center text-red-400">
                         <Trash2 className="w-3.5 h-3.5" />
                       </button>
                     </div>

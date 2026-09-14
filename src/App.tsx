@@ -20,6 +20,7 @@ import Settings from '@/pages/Settings';
 import AcademicSessions from '@/pages/AcademicSessions';
 import NeuLayout from '@/components/NeuLayout';
 import NotFound from '@/pages/not-found';
+import Chanda from '@/pages/Chanda';
 
 function AdminPage({ Page }: { Page: React.ComponentType }) {
   return (
@@ -42,6 +43,7 @@ function Router() {
       <Route path="/admin/madrasa">{() => <AdminPage Page={Madrasa} />}</Route>
       <Route path="/admin/school">{() => <AdminPage Page={School} />}</Route>
       <Route path="/admin/fees">{() => <AdminPage Page={Fees} />}</Route>
+      <Route path="/admin/chanda">{() => <AdminPage Page={Chanda} />}</Route>
       <Route path="/admin/results">{() => <AdminPage Page={Results} />}</Route>
       <Route path="/admin/announcements">{() => <AdminPage Page={Announcements} />}</Route>
       <Route path="/admin/reports">{() => <AdminPage Page={Reports} />}</Route>

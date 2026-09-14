@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useReducer, useEffect, ReactNode } from 'react';
 import {
   State, Language, Student, Teacher, FeeRecord, Announcement, Result,
-  AcademicSession, RollNumberRange, SubjectConfig, DEFAULT_ROLL_RANGES, DEFAULT_SUBJECT_CONFIGS, InstitutionProfile,
+  AcademicSession, RollNumberRange, SubjectConfig, DEFAULT_ROLL_RANGES, DEFAULT_SUBJECT_CONFIGS, InstitutionProfile, ZakatIncome, ZakatExpense,
 } from '@/types';
 import { translations } from '@/lib/i18n';
 import { stateApi } from '@/lib/api';
@@ -61,6 +61,13 @@ type Action =
   | { type: 'ADD_FEE_RECORD'; payload: FeeRecord }
   | { type: 'UPDATE_FEE_RECORD'; payload: FeeRecord }
   | { type: 'DELETE_FEE_RECORD'; payload: string }
+  // Chanda / Zakat
+  | { type: 'ADD_ZAKAT_INCOME'; payload: ZakatIncome }
+  | { type: 'UPDATE_ZAKAT_INCOME'; payload: ZakatIncome }
+  | { type: 'DELETE_ZAKAT_INCOME'; payload: string }
+  | { type: 'ADD_ZAKAT_EXPENSE'; payload: ZakatExpense }
+  | { type: 'UPDATE_ZAKAT_EXPENSE'; payload: ZakatExpense }
+  | { type: 'DELETE_ZAKAT_EXPENSE'; payload: string }
   // Announcements
   | { type: 'ADD_ANNOUNCEMENT'; payload: Announcement }
   | { type: 'UPDATE_ANNOUNCEMENT'; payload: Announcement }
@@ -94,6 +101,8 @@ const initialState: State = {
   students: saved.students ?? [],
   teachers: saved.teachers ?? [],
   feeRecords: saved.feeRecords ?? [],
+  zakatIncome: saved.zakatIncome ?? [],
+  zakatExpenses: saved.zakatExpenses ?? [],
   announcements: saved.announcements ?? [],
   results: saved.results ?? [],
   academicSessions: saved.academicSessions?.length
@@ -143,6 +152,13 @@ function reducer(state: State, action: Action): State {
     case 'ADD_FEE_RECORD':    return { ...state, feeRecords: [...state.feeRecords, action.payload] };
     case 'UPDATE_FEE_RECORD': return { ...state, feeRecords: state.feeRecords.map(f => f.id === action.payload.id ? action.payload : f) };
     case 'DELETE_FEE_RECORD': return { ...state, feeRecords: state.feeRecords.filter(f => f.id !== action.payload) };
+
+    case 'ADD_ZAKAT_INCOME': return { ...state, zakatIncome: [...state.zakatIncome, action.payload] };
+    case 'UPDATE_ZAKAT_INCOME': return { ...state, zakatIncome: state.zakatIncome.map(record => record.id === action.payload.id ? action.payload : record) };
+    case 'DELETE_ZAKAT_INCOME': return { ...state, zakatIncome: state.zakatIncome.filter(record => record.id !== action.payload) };
+    case 'ADD_ZAKAT_EXPENSE': return { ...state, zakatExpenses: [...state.zakatExpenses, action.payload] };
+    case 'UPDATE_ZAKAT_EXPENSE': return { ...state, zakatExpenses: state.zakatExpenses.map(record => record.id === action.payload.id ? action.payload : record) };
+    case 'DELETE_ZAKAT_EXPENSE': return { ...state, zakatExpenses: state.zakatExpenses.filter(record => record.id !== action.payload) };
 
     case 'ADD_ANNOUNCEMENT':    return { ...state, announcements: [...state.announcements, action.payload] };
     case 'UPDATE_ANNOUNCEMENT': return { ...state, announcements: state.announcements.map(a => a.id === action.payload.id ? action.payload : a) };

@@ -60,7 +60,7 @@ export default function Madrasa() {
                     </div>
                   ))
                 ) : (
-                  <div className="text-center opacity-50 text-sm py-4">No students enrolled</div>
+                  <div className="text-center opacity-50 text-sm py-4">{isUrdu ? 'کوئی طالبہ داخل نہیں' : 'No students enrolled'}</div>
                 )}
               </div>
             </div>
@@ -100,7 +100,7 @@ export default function Madrasa() {
               </tbody>
             </table>
             {madrasaStudents.length === 0 && (
-              <div className="p-8 text-center opacity-50">No students found.</div>
+              <div className="p-8 text-center opacity-50">{isUrdu ? 'کوئی طالبہ نہیں ملی' : 'No students found.'}</div>
             )}
           </div>
         </div>

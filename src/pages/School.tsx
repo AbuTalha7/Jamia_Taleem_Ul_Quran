@@ -120,7 +120,7 @@ export default function School() {
               </tbody>
             </table>
             {filteredStudents.length === 0 && (
-              <div className="p-8 text-center opacity-50">No students found for selected filters.</div>
+              <div className="p-8 text-center opacity-50">{isUrdu ? 'منتخب فلٹرز کے لیے کوئی طالبہ نہیں ملی' : 'No students found for selected filters.'}</div>
             )}
           </div>
         </div>

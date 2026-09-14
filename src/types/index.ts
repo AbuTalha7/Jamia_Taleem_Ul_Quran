@@ -25,11 +25,30 @@ export interface Student {
   rollNo: string;
   cnic: string;
   phone: string;
+  address: string;
   class: string;
   section: string;
   department: 'madrasa' | 'school';
   status: 'active' | 'inactive' | 'graduated';
   sessionId?: string;
+}
+
+export interface ZakatIncome {
+  id: string;
+  donorName: string;
+  amount: number;
+  date: string;
+  purpose: string;
+  notes: string;
+}
+
+export interface ZakatExpense {
+  id: string;
+  amount: number;
+  date: string;
+  purpose: string;
+  recipient: string;
+  notes: string;
 }
 
 export interface Teacher {
@@ -92,6 +111,8 @@ export interface State {
   students: Student[];
   teachers: Teacher[];
   feeRecords: FeeRecord[];
+  zakatIncome: ZakatIncome[];
+  zakatExpenses: ZakatExpense[];
   announcements: Announcement[];
   results: Result[];
   academicSessions: AcademicSession[];

@@ -7,7 +7,16 @@ export function printHTML(html: string, title = 'Print') {
     alert('Please allow pop-ups to print.');
     return;
   }
-  w.document.write(html);
+  const language = getPrintLanguage();
+  const direction = language === 'ur' ? 'rtl' : 'ltr';
+  const localizedHtml = html.replace(
+    /<html(?![^>]*\bdir=)/i,
+    `<html lang="${language}" dir="${direction}"`,
+  );
+  const logoSrc = `${import.meta.env.BASE_URL}logo.jpeg`;
+  const watermark = `<div class="print-watermark" aria-hidden="true"><img src="${logoSrc}" alt="" /></div>`;
+  const printableHtml = localizedHtml.replace(/<body([^>]*)>/i, `<body$1>${watermark}`);
+  w.document.write(printableHtml);
   w.document.close();
   w.document.title = title;
   w.focus();
@@ -31,11 +40,32 @@ export const PRINT_STYLES = `
 
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body {
+      position: relative;
       font-family: 'Amiri', Georgia, serif;
       color: #1a1a2e;
       font-size: 13px;
       background: #fff;
       padding: 16px;
+    }
+    .print-watermark {
+      position: fixed;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      pointer-events: none;
+      z-index: 0;
+    }
+    .print-watermark img {
+      width: min(58vw, 360px);
+      max-height: 58vh;
+      object-fit: contain;
+      opacity: 0.075;
+      filter: grayscale(1);
+    }
+    body > *:not(.print-watermark) {
+      position: relative;
+      z-index: 1;
     }
 
     /* Urdu text rendering — Jameel Noori Nastaleeq first, then Noto Nastaliq Urdu as web fallback */
@@ -252,13 +282,15 @@ export const PRINT_STYLES = `
     }
     @media print {
       body { padding: 0; }
+      .print-watermark img { opacity: 0.075; }
+      .print-watermark { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
       .footer-note { position: fixed; bottom: 0; width: 100%; }
     }
   </style>
 `;
 
 /** Build institution header HTML, optionally showing academic session */
-export function institutionHeader(sessionName?: string) {
+export function institutionHeader(sessionName?: string, language: 'en' | 'ur' = getPrintLanguage()) {
   let profile = {
     nameEn: 'Jamia Taleem-ul-Quran Lil-Banat',
     nameUr: 'جامعہ تعلیم القرآن للبنات',
@@ -269,19 +301,29 @@ export function institutionHeader(sessionName?: string) {
     const saved = JSON.parse(localStorage.getItem('jamia_portal_v2') || '{}');
     if (saved.institutionProfile) profile = { ...profile, ...saved.institutionProfile };
   } catch { /* use defaults when storage is unavailable */ }
+  const isUrdu = language === 'ur';
   const sessionLine = sessionName
-    ? `<div><span class="session-badge">Academic Session: ${sessionName}</span></div>`
+    ? `<div><span class="session-badge">${isUrdu ? 'تعلیمی سال: ' : 'Academic Session: '}${sessionName}</span></div>`
     : '';
   const logoSrc = `${import.meta.env.BASE_URL}logo.jpeg`;
   return `
     <div class="header">
       <img class="header-logo" src="${logoSrc}" alt="Jamia Taleem-ul-Quran logo" />
       <div class="header-text">
-        <h1>${profile.nameEn}</h1>
+        <h1>${isUrdu ? profile.nameUr : profile.nameEn}</h1>
         <span class="urdu-name">${profile.nameUr}</span>
         <div class="contact">${profile.address} &nbsp;|&nbsp; ${profile.phone}</div>
         ${sessionLine}
       </div>
     </div>
   `;
+}
+
+function getPrintLanguage(): 'en' | 'ur' {
+  try {
+    const saved = JSON.parse(localStorage.getItem('jamia_portal_v2') || '{}');
+    return saved.language === 'ur' ? 'ur' : 'en';
+  } catch {
+    return 'en';
+  }
 }

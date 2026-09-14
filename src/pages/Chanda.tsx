@@ -1,0 +1,95 @@
+import React, { useMemo, useState } from 'react';
+import { useApp } from '@/store';
+import { ZakatExpense, ZakatIncome } from '@/types';
+import { downloadExcel } from '@/lib/excel';
+import { institutionHeader, printHTML, PRINT_STYLES } from '@/lib/print';
+import { toast } from 'sonner';
+import { Download, Edit, HandCoins, Plus, Printer, Search, Trash2 } from 'lucide-react';
+
+type Tab = 'income' | 'expense';
+type ReportMode = 'all' | 'month' | 'year';
+type RecordForm = Partial<ZakatIncome & ZakatExpense>;
+
+const today = () => new Date().toISOString().slice(0, 10);
+
+export default function Chanda() {
+  const { state, dispatch } = useApp();
+  const isUrdu = state.language === 'ur';
+  const text = isUrdu ? {
+    title: 'چندہ پورٹل', intro: 'چندہ وصولی، اخراجات اور دستیاب بیلنس کا ریکارڈ', received: 'کل چندہ موصول', spent: 'کل چندہ خرچ', balance: 'باقی چندہ بیلنس', income: 'چندہ آمدن', expenses: 'چندہ اخراجات', receivedTitle: 'موصول شدہ رقم', spentTitle: 'خرچ شدہ رقم', addIncome: 'آمدن شامل کریں', addExpense: 'خرچ شامل کریں', search: 'ریکارڈ تلاش کریں...', date: 'تاریخ', donor: 'عطیہ دہندہ', recipient: 'مستحق / تفصیل', purpose: 'مقصد', amount: 'رقم', notes: 'نوٹس', actions: 'کارروائی', edit: 'ترمیم', delete: 'حذف', print: 'پرنٹ / پی ڈی ایف', excel: 'ایکسل', reports: 'چندہ رپورٹس', all: 'تمام ریکارڈ', monthly: 'ماہانہ رپورٹ', yearly: 'سالانہ رپورٹ', selectMonth: 'مہینہ منتخب کریں', selectYear: 'سال منتخب کریں', reportPeriod: 'رپورٹ کا عرصہ', reportIncome: 'اس عرصے کی آمدن', reportExpense: 'اس عرصے کے اخراجات', noRecords: 'کوئی ریکارڈ نہیں ملا', add: 'شامل کریں', save: 'محفوظ کریں', cancel: 'منسوخ', donorRequired: 'عطیہ دہندہ کا نام ضروری ہے', recipientRequired: 'مستحق یا خرچ کی تفصیل ضروری ہے', required: 'تاریخ، مقصد اور درست رقم ضروری ہے', updated: 'ریکارڈ اپڈیٹ ہو گیا', added: 'ریکارڈ شامل ہو گیا', deleted: 'ریکارڈ حذف ہو گیا', category: 'مقصد / زمرہ', dateRequired: 'تاریخ *', amountRs: 'رقم (روپے) *', notesOptional: 'اضافی نوٹس', report: 'رپورٹ', type: 'قسم', donorRecipient: 'عطیہ دہندہ / مستحق', summary: 'مالی خلاصہ', generated: 'تیار کردہ', incomeType: 'آمدن', expenseType: 'خرچ', noPeriod: 'رپورٹ کا عرصہ منتخب کریں',
+  } : {
+    title: 'Chanda Portal', intro: 'Track Chanda received, spending, and available balance.', received: 'Total Chanda Received', spent: 'Total Chanda Spent', balance: 'Remaining Chanda Balance', income: 'Chanda Income', expenses: 'Chanda Expenses', receivedTitle: 'Money Received', spentTitle: 'Money Spent', addIncome: 'Add Income', addExpense: 'Add Expense', search: 'Search records...', date: 'Date', donor: 'Donor', recipient: 'Recipient / Details', purpose: 'Purpose', amount: 'Amount', notes: 'Notes', actions: 'Actions', edit: 'Edit', delete: 'Delete', print: 'Print / PDF', excel: 'Excel', reports: 'Chanda Reports', all: 'All Records', monthly: 'Monthly Report', yearly: 'Yearly Report', selectMonth: 'Select month', selectYear: 'Select year', reportPeriod: 'Report period', reportIncome: 'Income for period', reportExpense: 'Expenses for period', noRecords: 'No records found', add: 'Add', save: 'Save', cancel: 'Cancel', donorRequired: 'Donor name is required', recipientRequired: 'Recipient or spending details are required', required: 'Date, purpose, and a positive amount are required', updated: 'Record updated', added: 'Record added', deleted: 'Record deleted', category: 'Purpose / Category', dateRequired: 'Date *', amountRs: 'Amount (Rs.) *', notesOptional: 'Additional notes', report: 'Report', type: 'Type', donorRecipient: 'Donor / Recipient', summary: 'Financial Summary', generated: 'Generated', incomeType: 'Income', expenseType: 'Expense', noPeriod: 'Select a report period',
+  };
+
+  const [tab, setTab] = useState<Tab>('income');
+  const [search, setSearch] = useState('');
+  const [fromDate, setFromDate] = useState('');
+  const [toDate, setToDate] = useState('');
+  const [reportMode, setReportMode] = useState<ReportMode>('all');
+  const [reportPeriod, setReportPeriod] = useState('');
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const [editing, setEditing] = useState<RecordForm | null>(null);
+  const [form, setForm] = useState<RecordForm>({ date: today(), amount: 0, purpose: '', notes: '', donorName: '', recipient: '' });
+
+  const matchesDate = (date: string) => (!fromDate || date >= fromDate) && (!toDate || date <= toDate);
+  const query = search.trim().toLowerCase();
+  const income = useMemo(() => state.zakatIncome.filter(record => matchesDate(record.date) && (!query || `${record.donorName} ${record.purpose} ${record.notes}`.toLowerCase().includes(query))), [state.zakatIncome, search, fromDate, toDate]);
+  const expenses = useMemo(() => state.zakatExpenses.filter(record => matchesDate(record.date) && (!query || `${record.recipient} ${record.purpose} ${record.notes}`.toLowerCase().includes(query))), [state.zakatExpenses, search, fromDate, toDate]);
+  const received = state.zakatIncome.reduce((sum, record) => sum + record.amount, 0);
+  const spent = state.zakatExpenses.reduce((sum, record) => sum + record.amount, 0);
+  const visibleRecords = tab === 'income' ? income : expenses;
+
+  const reportMatches = (date: string) => {
+    if (reportMode === 'all') return true;
+    if (!reportPeriod) return false;
+    return reportMode === 'month' ? date.startsWith(reportPeriod) : date.startsWith(`${reportPeriod}-`);
+  };
+  const reportIncome = state.zakatIncome.filter(record => reportMatches(record.date));
+  const reportExpenses = state.zakatExpenses.filter(record => reportMatches(record.date));
+  const reportReceived = reportIncome.reduce((sum, record) => sum + record.amount, 0);
+  const reportSpent = reportExpenses.reduce((sum, record) => sum + record.amount, 0);
+  const reportLabel = reportMode === 'month' && reportPeriod ? new Date(`${reportPeriod}-01T00:00:00`).toLocaleDateString(isUrdu ? 'ur-PK' : 'en-PK', { month: 'long', year: 'numeric' }) : reportMode === 'year' && reportPeriod ? reportPeriod : text.all;
+
+  const openAdd = (nextTab: Tab) => { setTab(nextTab); setEditing(null); setForm({ date: today(), amount: 0, purpose: '', notes: '', donorName: '', recipient: '' }); setDialogOpen(true); };
+
+  const save = () => {
+    if (!form.date || !form.amount || form.amount <= 0 || !form.purpose?.trim()) { toast.error(text.required); return; }
+    if (tab === 'income' && !form.donorName?.trim()) { toast.error(text.donorRequired); return; }
+    if (tab === 'expense' && !form.recipient?.trim()) { toast.error(text.recipientRequired); return; }
+    if (tab === 'income') {
+      const record = { id: editing?.id ?? `chanda-in-${Date.now()}`, donorName: form.donorName ?? '', amount: Number(form.amount), date: form.date, purpose: form.purpose ?? '', notes: form.notes ?? '' };
+      dispatch({ type: editing ? 'UPDATE_ZAKAT_INCOME' : 'ADD_ZAKAT_INCOME', payload: record });
+    } else {
+      const record = { id: editing?.id ?? `chanda-out-${Date.now()}`, recipient: form.recipient ?? '', amount: Number(form.amount), date: form.date, purpose: form.purpose ?? '', notes: form.notes ?? '' };
+      dispatch({ type: editing ? 'UPDATE_ZAKAT_EXPENSE' : 'ADD_ZAKAT_EXPENSE', payload: record });
+    }
+    setDialogOpen(false); toast.success(editing ? text.updated : text.added);
+  };
+
+  const remove = (id: string) => { dispatch({ type: tab === 'income' ? 'DELETE_ZAKAT_INCOME' : 'DELETE_ZAKAT_EXPENSE', payload: id }); toast.success(text.deleted); };
+
+  const reportRows = [...reportIncome.map(record => ({ type: text.incomeType, date: record.date, person: record.donorName, purpose: record.purpose, amount: record.amount, notes: record.notes })), ...reportExpenses.map(record => ({ type: text.expenseType, date: record.date, person: record.recipient, purpose: record.purpose, amount: record.amount, notes: record.notes }))];
+  const printReport = () => {
+    if (reportMode !== 'all' && !reportPeriod) { toast.error(text.noPeriod); return; }
+    const rows = reportRows.map(record => `<tr><td>${record.type}</td><td>${record.date}</td><td>${record.person}</td><td>${record.purpose}</td><td>Rs. ${record.amount.toLocaleString()}</td><td>${record.notes || '-'}</td></tr>`).join('');
+    const dir = isUrdu ? 'rtl' : 'ltr';
+    printHTML(`<!DOCTYPE html><html lang="${isUrdu ? 'ur' : 'en'}" dir="${dir}"><head><meta charset="utf-8"><title>${text.title} - ${text.report}</title>${PRINT_STYLES}</head><body class="${isUrdu ? 'rtl' : ''}">${institutionHeader(undefined, state.language)}<div class="section-title">${text.title} - ${text.report} (${reportLabel})</div><div style="display:flex;gap:20px;margin-bottom:14px;font-weight:bold"><span>${text.received}: Rs. ${reportReceived.toLocaleString()}</span><span>${text.spent}: Rs. ${reportSpent.toLocaleString()}</span><span>${text.balance}: Rs. ${(reportReceived - reportSpent).toLocaleString()}</span></div><table><thead><tr><th>${text.type}</th><th>${text.date}</th><th>${text.donorRecipient}</th><th>${text.purpose}</th><th>${text.amount}</th><th>${text.notes}</th></tr></thead><tbody>${rows || `<tr><td colspan="6">${text.noRecords}</td></tr>`}</tbody></table><p class="footer-note">${text.generated} ${new Date().toLocaleDateString(isUrdu ? 'ur-PK' : 'en-PK')}</p></body></html>`, `Chanda_${reportMode}`);
+  };
+
+  const exportReport = () => downloadExcel(reportRows.map(record => ({ [text.type]: record.type, [text.date]: record.date, [text.donorRecipient]: record.person, [text.purpose]: record.purpose, [text.amount]: record.amount, [text.notes]: record.notes })), `Chanda_${reportMode}_${reportPeriod || 'all'}`, isUrdu ? 'چندہ ریکارڈ' : 'Chanda Records');
+
+  return (
+    <div className="space-y-6">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4"><div><h2 className="text-2xl font-bold text-[#E4572E]">{text.title}</h2><p className="text-sm opacity-60 mt-1">{text.intro}</p></div><div className="flex gap-2 flex-wrap"><button onClick={printReport} className="neu-btn px-4 py-2.5 rounded-xl text-sm flex items-center gap-2"><Printer className="w-4 h-4 text-[#E4572E]" />{text.print}</button><button onClick={exportReport} className="neu-btn px-4 py-2.5 rounded-xl text-sm flex items-center gap-2"><Download className="w-4 h-4 text-[#E4572E]" />{text.excel}</button></div></div>
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">{[[text.received, received, '#27ae60'], [text.spent, spent, '#E4572E'], [text.balance, received - spent, '#1C2E6B']].map(([label, value, color]) => <div key={String(label)} className="neu-raised rounded-2xl p-5"><div className="text-xs opacity-60">{label}</div><div className="text-2xl font-bold mt-2" style={{ color: String(color) }}>Rs. {Number(value).toLocaleString()}</div></div>)}</div>
+
+      <div className="neu-raised rounded-2xl p-5 space-y-4"><h3 className="font-bold">{text.reports}</h3><div className="flex flex-wrap gap-2 items-center"><select className="neu-input rounded-xl px-3 h-10 text-sm" value={reportMode} onChange={e => { setReportMode(e.target.value as ReportMode); setReportPeriod(''); }}><option value="all">{text.all}</option><option value="month">{text.monthly}</option><option value="year">{text.yearly}</option></select>{reportMode === 'month' && <input type="month" aria-label={text.selectMonth} className="neu-input rounded-xl px-3 h-10 text-sm" value={reportPeriod} onChange={e => setReportPeriod(e.target.value)} />}{reportMode === 'year' && <input type="number" aria-label={text.selectYear} placeholder={text.selectYear} min="2000" max="2100" className="neu-input rounded-xl px-3 h-10 text-sm w-32" value={reportPeriod} onChange={e => setReportPeriod(e.target.value)} />}<span className="text-sm opacity-60">{text.reportPeriod}: {reportLabel}</span><button onClick={printReport} className="neu-btn px-3 py-2 rounded-xl text-sm flex items-center gap-2"><Printer className="w-4 h-4" />{text.print}</button><button onClick={exportReport} className="neu-btn px-3 py-2 rounded-xl text-sm flex items-center gap-2"><Download className="w-4 h-4" />{text.excel}</button></div><div className="flex gap-6 text-sm"><span>{text.reportIncome}: <strong>Rs. {reportReceived.toLocaleString()}</strong></span><span>{text.reportExpense}: <strong>Rs. {reportSpent.toLocaleString()}</strong></span><span>{text.balance}: <strong>Rs. {(reportReceived - reportSpent).toLocaleString()}</strong></span></div></div>
+
+      <div className="flex flex-col lg:flex-row gap-3 lg:items-center justify-between"><div className="flex gap-2"><button onClick={() => setTab('income')} className={`px-4 py-2 rounded-xl text-sm font-semibold ${tab === 'income' ? 'neu-raised text-[#27ae60]' : 'neu-btn opacity-60'}`}>{text.income} ({income.length})</button><button onClick={() => setTab('expense')} className={`px-4 py-2 rounded-xl text-sm font-semibold ${tab === 'expense' ? 'neu-raised text-[#E4572E]' : 'neu-btn opacity-60'}`}>{text.expenses} ({expenses.length})</button></div><div className="flex flex-wrap gap-2"><div className="neu-inset-sm rounded-xl px-3 flex items-center gap-2"><Search className="w-4 h-4 opacity-40" /><input className="bg-transparent outline-none h-10 text-sm w-48" placeholder={text.search} value={search} onChange={e => setSearch(e.target.value)} /></div><input type="date" aria-label={text.date} className="neu-input rounded-xl px-3 h-10 text-sm" value={fromDate} onChange={e => setFromDate(e.target.value)} /><input type="date" aria-label={text.date} className="neu-input rounded-xl px-3 h-10 text-sm" value={toDate} onChange={e => setToDate(e.target.value)} /></div></div>
+
+      <div className="neu-raised rounded-2xl overflow-hidden"><div className="p-4 flex justify-between items-center"><h3 className="font-bold flex items-center gap-2"><HandCoins className="w-5 h-5 text-[#E4572E]" />{tab === 'income' ? text.receivedTitle : text.spentTitle}</h3><button onClick={() => openAdd(tab)} className="neu-btn-primary px-4 py-2 rounded-xl text-white text-sm flex items-center gap-2"><Plus className="w-4 h-4" />{tab === 'income' ? text.addIncome : text.addExpense}</button></div><div className="neu-inset rounded-2xl m-3 overflow-x-auto"><table className="w-full text-sm min-w-[680px]"><thead><tr className="border-b border-[var(--neu-dark)]/20"><th className="px-4 py-3 text-left opacity-60">{text.date}</th><th className="px-4 py-3 text-left opacity-60">{tab === 'income' ? text.donor : text.recipient}</th><th className="px-4 py-3 text-left opacity-60">{text.purpose}</th><th className="px-4 py-3 text-left opacity-60">{text.amount}</th><th className="px-4 py-3 text-left opacity-60">{text.notes}</th><th className="px-4 py-3 text-right opacity-60">{text.actions}</th></tr></thead><tbody>{visibleRecords.map(record => { const person = tab === 'income' ? (record as ZakatIncome).donorName : (record as ZakatExpense).recipient; return <tr key={record.id} className="border-b border-[var(--neu-dark)]/10 last:border-0"><td className="px-4 py-3">{record.date}</td><td className="px-4 py-3 font-medium">{person}</td><td className="px-4 py-3">{record.purpose}</td><td className="px-4 py-3 font-bold">Rs. {record.amount.toLocaleString()}</td><td className="px-4 py-3 opacity-60">{record.notes || '-'}</td><td className="px-4 py-3"><div className="flex gap-2 justify-end"><button title={text.edit} onClick={() => { setEditing(record); setForm({ ...record }); setDialogOpen(true); }} className="neu-btn w-8 h-8 rounded-lg flex items-center justify-center text-[#E4572E]"><Edit className="w-3.5 h-3.5" /></button><button title={text.delete} onClick={() => remove(record.id)} className="neu-btn w-8 h-8 rounded-lg flex items-center justify-center text-red-400"><Trash2 className="w-3.5 h-3.5" /></button></div></td></tr>; })}</tbody></table>{visibleRecords.length === 0 && <div className="p-8 text-center opacity-40">{text.noRecords}</div>}</div></div>
+
+      {dialogOpen && <div className="fixed inset-0 z-50 flex items-center justify-center p-4"><div className="absolute inset-0 bg-black/20 backdrop-blur-sm" onClick={() => setDialogOpen(false)} /><div className="relative z-10 neu-raised rounded-2xl p-8 w-full max-w-lg"><h3 className="text-xl font-bold mb-6">{editing ? text.edit : text.add} {tab === 'income' ? text.income : text.expenses}</h3><div className="grid grid-cols-1 sm:grid-cols-2 gap-4"><div><label className="block text-sm font-semibold mb-1.5 opacity-70">{tab === 'income' ? `${text.donor} *` : text.recipient}</label><input className="neu-input w-full rounded-xl px-4 py-2.5 h-11" value={tab === 'income' ? form.donorName || '' : form.recipient || ''} onChange={e => setForm({ ...form, ...(tab === 'income' ? { donorName: e.target.value } : { recipient: e.target.value }) })} /></div><div><label className="block text-sm font-semibold mb-1.5 opacity-70">{text.dateRequired}</label><input type="date" className="neu-input w-full rounded-xl px-4 py-2.5 h-11" value={form.date || ''} onChange={e => setForm({ ...form, date: e.target.value })} /></div><div><label className="block text-sm font-semibold mb-1.5 opacity-70">{text.amountRs}</label><input type="number" min="0" className="neu-input w-full rounded-xl px-4 py-2.5 h-11" value={form.amount || ''} onChange={e => setForm({ ...form, amount: Number(e.target.value) })} /></div><div><label className="block text-sm font-semibold mb-1.5 opacity-70">{text.category}</label><input className="neu-input w-full rounded-xl px-4 py-2.5 h-11" value={form.purpose || ''} onChange={e => setForm({ ...form, purpose: e.target.value })} /></div><div className="sm:col-span-2"><label className="block text-sm font-semibold mb-1.5 opacity-70">{text.notesOptional}</label><textarea className="neu-input w-full rounded-xl px-4 py-2.5 min-h-20" value={form.notes || ''} onChange={e => setForm({ ...form, notes: e.target.value })} /></div></div><div className="flex justify-end gap-3 mt-8"><button onClick={() => setDialogOpen(false)} className="neu-btn px-5 py-2.5 rounded-xl">{text.cancel}</button><button onClick={save} className="neu-btn-primary px-5 py-2.5 rounded-xl text-white font-semibold">{text.save}</button></div></div></div>}
+    </div>
+  );
+}

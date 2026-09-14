@@ -18,12 +18,14 @@ export default function Students() {
 
   const [activeTab, setActiveTab] = useState<'All' | 'Madrasa' | 'School'>('All');
   const [search, setSearch] = useState('');
+  const [reportClass, setReportClass] = useState('');
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingStudent, setEditingStudent] = useState<Student | null>(null);
   const [errors, setErrors] = useState<{ dob?: string; cnic?: string; phone?: string; rollNo?: string }>({});
 
   const blankForm = (): Partial<Student> => ({
     name: '', fatherName: '', dob: '', rollNo: '', cnic: '', phone: '',
+    address: '',
     class: '', section: '', department: 'school', status: 'active',
     sessionId: activeSession?.id ?? undefined,
   });
@@ -127,6 +129,7 @@ export default function Students() {
         rollNo: formData.rollNo ?? '',
         cnic: formData.cnic ?? '',
         phone: formData.phone ?? '',
+        address: formData.address ?? '',
         class: formData.class ?? '',
         section: formData.section ?? '',
         department: formData.department ?? 'school',
@@ -149,22 +152,26 @@ export default function Students() {
     return state.academicSessions.find(s => s.id === sessionId)?.name ?? '-';
   };
 
+  const printLabels = isUrdu
+    ? { list: 'طالبات کی فہرست', roll: 'رول نمبر', name: 'نام', father: 'والد کا نام', address: 'پتہ', className: 'جماعت', department: 'شعبہ', session: 'تعلیمی سال', status: 'حالت', printed: 'پرنٹ کی تاریخ' }
+    : { list: 'Student List', roll: 'Roll No', name: 'Name', father: 'Father Name', address: 'Address', className: 'Class', department: 'Dept', session: 'Session', status: 'Status', printed: 'Printed on' };
+
   // Print
   const handlePrint = () => {
     const sessionName = viewSession?.name ?? activeSession?.name;
     const html = `
       <!DOCTYPE html><html>
-      <head><meta charset="utf-8"/><title>Student List</title>${PRINT_STYLES}</head>
+      <head><meta charset="utf-8"/><title>${printLabels.list}</title>${PRINT_STYLES}</head>
       <body>
         ${institutionHeader(viewSession?.name)}
         <div class="section-title">
-          Student List — ${activeTab !== 'All' ? activeTab + ' • ' : ''}${filteredStudents.length} students
+          ${printLabels.list} — ${activeTab !== 'All' ? activeTab + ' • ' : ''}${filteredStudents.length} ${isUrdu ? 'طالبات' : 'students'}
           ${viewSession ? ` | Session: ${viewSession.name}` : ''}
         </div>
         <table>
           <thead><tr>
-            <th>#</th><th>Roll No</th><th>Name</th><th>Father Name</th>
-            <th>Class</th><th>Dept</th><th>Session</th><th>Status</th>
+            <th>#</th><th>${printLabels.roll}</th><th>${printLabels.name}</th><th>${printLabels.father}</th><th>${printLabels.address}</th>
+            <th>${printLabels.className}</th><th>${printLabels.department}</th><th>${printLabels.session}</th><th>${printLabels.status}</th>
           </tr></thead>
           <tbody>
             ${filteredStudents.map((s, i) => `
@@ -173,6 +180,7 @@ export default function Students() {
                 <td style="font-family:monospace;font-weight:bold">${s.rollNo || '-'}</td>
                 <td>${s.name}</td>
                 <td>${s.fatherName || '-'}</td>
+                <td>${s.address || '-'}</td>
                 <td class="${MADRASA_CLASSES.includes(s.class as (typeof MADRASA_CLASSES)[number]) ? 'urdu' : ''}" dir="${MADRASA_CLASSES.includes(s.class as (typeof MADRASA_CLASSES)[number]) ? 'rtl' : 'ltr'}">${s.class}</td>
                 <td>${s.department === 'madrasa' ? 'Madrasa' : 'School'}</td>
                 <td>${getSessionName(s.sessionId)}</td>
@@ -180,7 +188,7 @@ export default function Students() {
               </tr>`).join('')}
           </tbody>
         </table>
-        <p class="footer-note">Printed on ${new Date().toLocaleDateString()} — Jamia Taleem-ul-Quran Lil-Banat</p>
+        <p class="footer-note">${printLabels.printed} ${new Date().toLocaleDateString(isUrdu ? 'ur-PK' : 'en-PK')} — Jamia Taleem-ul-Quran Lil-Banat</p>
       </body></html>`;
     printHTML(html, 'Student_List');
   };
@@ -188,7 +196,7 @@ export default function Students() {
   const handleExcel = () => {
     downloadExcel(
       filteredStudents.map(s => ({
-        'Roll No': s.rollNo, Name: s.name, 'Father Name': s.fatherName,
+        'Roll No': s.rollNo, Name: s.name, 'Father Name': s.fatherName, Address: s.address,
         DOB: s.dob, CNIC: s.cnic, Phone: s.phone, Class: s.class,
         Section: s.section, Department: s.department, Status: s.status,
         Session: getSessionName(s.sessionId),
@@ -263,6 +271,10 @@ export default function Students() {
           <div class="field">
             <div class="field-label">Phone</div>
             <div class="field-value" style="font-family:monospace">${s.phone || '—'}</div>
+          </div>
+          <div class="field field-full">
+            <div class="field-label">Address</div>
+            <div class="field-value">${s.address || '—'}</div>
           </div>
           <div class="field">
             <div class="field-label">Department</div>
@@ -356,6 +368,14 @@ export default function Students() {
   };
 
   const classOptions = formData.department === 'madrasa' ? MADRASA_CLASSES : SCHOOL_CLASSES;
+  const classRosterStudents = reportClass ? sessionStudents.filter(s => s.class === reportClass) : [];
+
+  const printClassRoster = () => {
+    const rows = classRosterStudents.map((s, i) => `<tr><td>${i + 1}</td><td>${s.rollNo || '-'}</td><td>${s.name}</td><td>${s.fatherName || '-'}</td><td>${s.address || '-'}</td><td>${s.phone || '-'}</td><td>${s.status}</td></tr>`).join('');
+    printHTML(`<!DOCTYPE html><html><head><meta charset="utf-8"><title>Class Roster</title>${PRINT_STYLES}</head><body>${institutionHeader(viewSession?.name)}<div class="section-title">Class Roster - ${reportClass} (${classRosterStudents.length} students)</div><table><thead><tr><th>#</th><th>Roll No</th><th>Name</th><th>Father Name</th><th>Address</th><th>Phone</th><th>Status</th></tr></thead><tbody>${rows}</tbody></table><p class="footer-note">Printed on ${new Date().toLocaleDateString()}</p></body></html>`, `Class_Roster_${reportClass}`);
+  };
+
+  const exportClassRoster = () => downloadExcel(classRosterStudents.map(s => ({ 'Roll No': s.rollNo, Name: s.name, 'Father Name': s.fatherName, Address: s.address, DOB: s.dob, CNIC: s.cnic, Phone: s.phone, Class: s.class, Section: s.section, Department: s.department, Status: s.status, Session: getSessionName(s.sessionId) })), `Class_${reportClass.replace(/[^a-z0-9]/gi, '_')}`);
 
   return (
     <div className="space-y-6">
@@ -378,6 +398,10 @@ export default function Students() {
             <Download className="w-4 h-4 text-[#E4572E]" />
             {isUrdu ? 'ایکسل' : 'Excel'}
           </button>
+          <select value={reportClass} onChange={e => setReportClass(e.target.value)} className="neu-input rounded-xl px-3 py-2.5 text-sm">
+            <option value="">Class roster...</option>
+            {[...SCHOOL_CLASSES, ...MADRASA_CLASSES].map(cls => <option key={cls} value={cls}>{cls}</option>)}
+          </select>
           <button onClick={handleAdd} className="neu-btn-primary px-5 py-2.5 rounded-xl text-white font-semibold flex items-center gap-2">
             <Plus className="w-4 h-4" />
             {isUrdu ? 'نئی طالبہ' : 'Add Student'}
@@ -420,12 +444,13 @@ export default function Students() {
         className="neu-raised rounded-2xl overflow-hidden"
       >
         <div className="neu-inset rounded-2xl m-3 overflow-x-auto">
-          <table className="w-full text-sm min-w-[600px]">
+          <table className="w-full text-sm min-w-[760px]">
             <thead>
               <tr className="border-b border-[var(--neu-dark)]/20">
                 <th className={`px-5 py-4 font-semibold opacity-60 text-xs tracking-wider ${isUrdu ? 'text-right' : 'text-left'}`}>{isUrdu ? 'نام' : 'Name'}</th>
                 <th className={`px-5 py-4 font-semibold opacity-60 text-xs tracking-wider ${isUrdu ? 'text-right' : 'text-left'}`}>{isUrdu ? 'رول نمبر' : 'Roll No'}</th>
                 <th className={`px-5 py-4 font-semibold opacity-60 text-xs tracking-wider hidden md:table-cell ${isUrdu ? 'text-right' : 'text-left'}`}>{isUrdu ? 'جماعت' : 'Class'}</th>
+                <th className={`px-5 py-4 font-semibold opacity-60 text-xs tracking-wider hidden xl:table-cell ${isUrdu ? 'text-right' : 'text-left'}`}>{isUrdu ? 'پتہ' : 'Address'}</th>
                 <th className={`px-5 py-4 font-semibold opacity-60 text-xs tracking-wider hidden lg:table-cell ${isUrdu ? 'text-right' : 'text-left'}`}>{isUrdu ? 'تعلیمی سال' : 'Session'}</th>
                 <th className={`px-5 py-4 font-semibold opacity-60 text-xs tracking-wider ${isUrdu ? 'text-right' : 'text-left'}`}>{isUrdu ? 'صورتحال' : 'Status'}</th>
                 <th className="px-5 py-4 font-semibold opacity-60 text-xs tracking-wider text-right">{isUrdu ? 'اقدامات' : 'Actions'}</th>
@@ -441,6 +466,7 @@ export default function Students() {
                       {s.class}
                     </span>
                   </td>
+                  <td className="px-5 py-3.5 opacity-70 hidden xl:table-cell max-w-xs">{s.address || '—'}</td>
                   <td className="px-5 py-3.5 hidden lg:table-cell">
                     <span className="text-xs opacity-60">{getSessionName(s.sessionId)}</span>
                   </td>
@@ -487,6 +513,16 @@ export default function Students() {
           )}
         </div>
       </motion.div>
+
+      {reportClass && (
+        <div className="neu-raised rounded-2xl p-5 space-y-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div><h3 className="font-bold text-lg">Class Roster: {reportClass}</h3><p className="text-sm opacity-60">{classRosterStudents.length} enrolled students</p></div>
+            <div className="flex gap-2"><button onClick={printClassRoster} className="neu-btn px-3 py-2 rounded-xl text-sm flex items-center gap-2"><Printer className="w-4 h-4" />Print / PDF</button><button onClick={exportClassRoster} className="neu-btn px-3 py-2 rounded-xl text-sm flex items-center gap-2"><Download className="w-4 h-4" />Excel</button></div>
+          </div>
+          <div className="neu-inset rounded-xl overflow-x-auto"><table className="w-full text-sm min-w-[700px]"><thead><tr><th className="px-4 py-3 text-left opacity-60">Roll No</th><th className="px-4 py-3 text-left opacity-60">Name</th><th className="px-4 py-3 text-left opacity-60">Father Name</th><th className="px-4 py-3 text-left opacity-60">Address</th><th className="px-4 py-3 text-left opacity-60">Phone</th><th className="px-4 py-3 text-left opacity-60">Status</th></tr></thead><tbody>{classRosterStudents.map(s => <tr key={s.id} className="border-b border-[var(--neu-dark)]/10 last:border-0"><td className="px-4 py-3 font-mono">{s.rollNo || '-'}</td><td className="px-4 py-3 font-medium">{s.name}</td><td className="px-4 py-3">{s.fatherName || '-'}</td><td className="px-4 py-3">{s.address || '-'}</td><td className="px-4 py-3">{s.phone || '-'}</td><td className="px-4 py-3">{s.status}</td></tr>)}</tbody></table>{classRosterStudents.length === 0 && <div className="p-6 text-center opacity-40">No students in this class</div>}</div>
+        </div>
+      )}
 
       {/* Add/Edit Dialog */}
       {dialogOpen && (
@@ -594,6 +630,12 @@ export default function Students() {
                 <label className="block text-sm font-semibold mb-1.5 opacity-70">{isUrdu ? 'موبائل نمبر' : 'Mobile Number'} <span className="font-normal opacity-50 text-xs">(11 digits)</span></label>
                 <input className={`neu-input w-full rounded-xl px-4 py-2.5 h-11 ${errors.phone ? 'border border-red-400' : ''}`} value={formData.phone || ''} onChange={e => handlePhoneChange(e.target.value)} placeholder="03001234567" />
                 {errors.phone && <p className="text-xs text-red-500 mt-1">{errors.phone}</p>}
+              </div>
+              {/* Status */}
+              {/* Address */}
+              <div className="md:col-span-2">
+                <label className="block text-sm font-semibold mb-1.5 opacity-70">{isUrdu ? 'پتہ' : 'Address'}</label>
+                <textarea className="neu-input w-full rounded-xl px-4 py-2.5 min-h-20 resize-y" value={formData.address || ''} onChange={e => setFormData({ ...formData, address: e.target.value })} dir={isUrdu ? 'rtl' : 'ltr'} placeholder={isUrdu ? 'مکمل پتہ' : 'Student residential address'} />
               </div>
               {/* Status */}
               <div>

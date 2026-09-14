@@ -1,0 +1,9 @@
+RewriteEngine On
+
+# Serve existing files and directories normally.
+RewriteCond %{REQUEST_FILENAME} -f [OR]
+RewriteCond %{REQUEST_FILENAME} -d
+RewriteRule ^ - [L]
+
+# Let the client-side Wouter router handle application routes.
+RewriteRule ^ index.html [L]

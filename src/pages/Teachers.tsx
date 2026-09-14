@@ -56,20 +56,20 @@ export default function Teachers() {
 
   const handleSave = () => {
     if (!formData.name || !formData.subject) {
-      toast.error('Please fill required fields (Name, Subject)');
+      toast.error(isUrdu ? 'ضروری خانے مکمل کریں (نام، مضمون)' : 'Please fill required fields (Name, Subject)');
       return;
     }
     if (!validateForm()) return;
 
     if (editingTeacher) {
       dispatch({ type: 'UPDATE_TEACHER', payload: { ...editingTeacher, ...formData } as Teacher });
-      toast.success('Teacher updated');
+      toast.success(isUrdu ? 'استاد کی معلومات اپڈیٹ ہوئیں' : 'Teacher updated');
     } else {
       dispatch({
         type: 'ADD_TEACHER',
         payload: { id: Math.random().toString(36).substr(2, 9), ...formData } as Teacher
       });
-      toast.success('Teacher added');
+      toast.success(isUrdu ? 'استاد شامل ہو گیا' : 'Teacher added');
     }
     setDialogOpen(false);
   };
@@ -77,7 +77,7 @@ export default function Teachers() {
   const handleDelete = (id: string) => {
     if (confirm('Are you sure you want to delete this teacher?')) {
       dispatch({ type: 'DELETE_TEACHER', payload: id });
-      toast.success('Teacher deleted');
+      toast.success(isUrdu ? 'استاد حذف ہو گیا' : 'Teacher deleted');
     }
   };
 
@@ -104,7 +104,7 @@ export default function Teachers() {
               value={search}
               onChange={e => setSearch(e.target.value)}
               className="neu-input w-full h-full bg-transparent border-none outline-none text-sm shadow-none"
-              placeholder="Search by name or subject..."
+              placeholder={isUrdu ? 'نام یا مضمون سے تلاش...' : 'Search by name or subject...'}
             />
           </div>
           <button onClick={() => openDialog()} className="neu-btn-primary px-5 py-2.5 rounded-xl text-white font-semibold flex items-center gap-2">
