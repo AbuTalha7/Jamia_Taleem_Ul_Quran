@@ -4,21 +4,24 @@ import { Result, Student, MADRASA_CLASSES, SCHOOL_CLASSES } from '@/types';
 import { downloadExcel } from '@/lib/excel';
 import { printHTML, PRINT_STYLES, institutionHeader } from '@/lib/print';
 import { toast } from 'sonner';
-import { Plus, Printer, Edit, Trash2, Download, ChevronDown } from 'lucide-react';
+import { formatAdminDate, isAdminDate, normalizeAdminDate } from '@/lib/adminDate';
+import { Plus, Printer, Edit, Trash2, Download, ChevronDown, Search } from 'lucide-react';
 
 const ALL_CLASSES = [...MADRASA_CLASSES, ...SCHOOL_CLASSES];
 
 type ResultWithInfo = Result & { studentName: string; rollNo: string; className: string };
 type FormState = Partial<Result> & { className?: string };
 type BulkMark = { marks: number | ''; totalMarks: number | '' };
+type ResultsProps = { department?: 'school' | 'madrasa' };
 
-export default function Results() {
+export default function Results({ department }: ResultsProps) {
   const { state, dispatch, getViewSession } = useApp();
   const isUrdu = state.language === 'ur';
   const viewSession = getViewSession();
 
   const [classFilter, setClassFilter] = useState('');
   const [sectionFilter, setSectionFilter] = useState('');
+  const [studentSearch, setStudentSearch] = useState('');
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingResult, setEditingResult] = useState<ResultWithInfo | null>(null);
   const [bulkMarks, setBulkMarks] = useState<Record<string, BulkMark>>({});
@@ -36,18 +39,18 @@ export default function Results() {
     const student = state.students.find(item => item.id === studentId);
     if (student) {
       setProfileStudent(student);
-      setProfileForm({ ...student });
+      setProfileForm({ ...student, dob: formatAdminDate(student.dob) });
       setProfileEditOpen(false);
     }
   };
 
   const saveStudentProfile = () => {
     if (!profileStudent) return;
-    if (!profileForm.name?.trim() || !profileForm.class || !profileForm.dob) {
+    if (!profileForm.name?.trim() || !profileForm.class || !profileForm.dob || !isAdminDate(profileForm.dob)) {
       toast.error(isUrdu ? 'نام، جماعت اور تاریخ پیدائش ضروری ہیں' : 'Name, class, and date of birth are required');
       return;
     }
-    const updatedStudent = { ...profileStudent, ...profileForm } as Student;
+    const updatedStudent = { ...profileStudent, ...profileForm, dob: normalizeAdminDate(profileForm.dob ?? '') } as Student;
     dispatch({ type: 'UPDATE_STUDENT', payload: updatedStudent });
     setProfileStudent(updatedStudent);
     setProfileEditOpen(false);
@@ -61,7 +64,7 @@ export default function Results() {
       <div class="section-title">Student Profile</div>
       <table><tbody>
         <tr><th>Name</th><td>${student.name}</td><th>Roll No</th><td>${student.rollNo || '-'}</td></tr>
-        <tr><th>Father Name</th><td>${student.fatherName || '-'}</td><th>Date of Birth</th><td>${student.dob}</td></tr>
+        <tr><th>Father Name</th><td>${student.fatherName || '-'}</td><th>Date of Birth</th><td>${formatAdminDate(student.dob)}</td></tr>
         <tr><th>Class</th><td>${student.class}</td><th>Section</th><td>${student.section || '-'}</td></tr>
         <tr><th>Department</th><td>${student.department === 'madrasa' ? 'Madrasa' : 'School'}</td><th>Phone</th><td>${student.phone || '-'}</td></tr>
         <tr><th>Status</th><td>${student.status}</td><th>CNIC / B-Form</th><td>${student.cnic || '-'}</td></tr>
@@ -79,9 +82,10 @@ export default function Results() {
   };
 
   // Session-filtered results
-  const sessionStudents = state.viewSessionId
-    ? state.students.filter(s => s.sessionId === state.viewSessionId)
-    : state.students;
+  const sessionStudents = state.students.filter(s =>
+    (!state.viewSessionId || s.sessionId === state.viewSessionId)
+    && (!department || s.department === department)
+  );
   const sessionStudentIds = new Set(sessionStudents.map(s => s.id));
 
   const resultsWithStudentInfo: ResultWithInfo[] = state.results
@@ -103,6 +107,8 @@ export default function Results() {
   const visibleStudents = sessionStudents.filter(student => {
     if (classFilter && student.class !== classFilter) return false;
     if (sectionFilter && student.section !== sectionFilter) return false;
+    const query = studentSearch.trim().toLowerCase();
+    if (query && !`${student.name} ${student.rollNo}`.toLowerCase().includes(query)) return false;
     return true;
   });
 
@@ -123,6 +129,7 @@ export default function Results() {
     ? [...new Set(sessionStudents.filter(s => s.class === classFilter).map(s => s.section).filter(Boolean))].sort()
     : [];
 
+  const availableClasses = department === 'school' ? state.schoolClasses : department === 'madrasa' ? state.madrasaClasses : ALL_CLASSES;
   const dialogStudents = formData.className
     ? sessionStudents.filter(s => s.class === formData.className)
     : sessionStudents;
@@ -135,9 +142,11 @@ export default function Results() {
     ?? (formData.className && MADRASA_CLASSES.includes(formData.className as (typeof MADRASA_CLASSES)[number]) ? 'madrasa' : 'school');
 
   const selectedSessionId = selectedStudent?.sessionId ?? state.viewSessionId ?? state.activeSessionId ?? undefined;
+  const getSchoolSubjects = (className: string) => state.schoolSubjectsByClass[className] ?? [];
+  const getMadrasaSubjects = (className: string) => state.madrasaSubjectsByClass[className] ?? [];
 
   const subjectOptions = formData.className
-    ? (
+    ? selectedDepartment === 'school' ? getSchoolSubjects(formData.className) : selectedDepartment === 'madrasa' ? getMadrasaSubjects(formData.className) : (
       state.subjectConfigs.find(c =>
         c.department === selectedDepartment
         && c.className === formData.className
@@ -179,6 +188,13 @@ export default function Results() {
     return '#e67e22';
   };
 
+  const resultPrintHeader = (sessionName?: string) => {
+    const profile = state.institutionProfile;
+    const logoSrc = `${import.meta.env.BASE_URL}logo.jpeg`;
+    const institutionName = isUrdu ? profile.nameUr : profile.nameEn;
+    return `<div class="result-print-header"><img class="result-print-logo" src="${logoSrc}" alt="${institutionName} logo" /><h1>${institutionName}</h1><div class="result-print-contact">${profile.address} &nbsp;|&nbsp; ${profile.phone}</div>${sessionName ? `<div class="result-print-session">${isUrdu ? 'تعلیمی سال: ' : 'Academic Session: '}${sessionName}</div>` : ''}</div>`;
+  };
+
   const individualResultHTML = (r: ResultWithInfo) => {
     const studentResults = resultsWithStudentInfo
       .filter(result => result.studentId === r.studentId && result.sessionId === (state.viewSessionId ?? getStudentInfo(r.studentId)?.sessionId))
@@ -187,12 +203,35 @@ export default function Results() {
     const total = studentResults.reduce((sum, result) => sum + result.totalMarks, 0);
     const student = state.students.find(item => item.id === r.studentId);
     const percentage = total > 0 ? (obtained / total) * 100 : 0;
+    const classSubjects = student?.department === 'school' ? getSchoolSubjects(student.class) : student?.department === 'madrasa' ? getMadrasaSubjects(student.class) : student ? (
+      state.subjectConfigs.find(config => config.department === student.department && config.className === student.class && config.sessionId === (student.sessionId ?? state.viewSessionId ?? state.activeSessionId))?.subjects
+      ?? state.subjectConfigs.find(config => config.department === student.department && config.className === student.class && !config.sessionId)?.subjects
+      ?? []
+    ) : [];
+    const subjectRows = [...new Set([...classSubjects, ...studentResults.map(result => result.subject)])];
+    const totalConfigured = subjectRows.reduce((sum, subject) => sum + (studentResults.find(result => result.subject === subject)?.totalMarks ?? 100), 0);
+    const totalObtainedConfigured = subjectRows.reduce((sum, subject) => sum + (studentResults.find(result => result.subject === subject)?.marks ?? 0), 0);
+    const configuredPercentage = totalConfigured > 0 ? (totalObtainedConfigured / totalConfigured) * 100 : 0;
 
     return `
       <!DOCTYPE html><html dir="${isUrdu ? 'rtl' : 'ltr'}">
-      <head><meta charset="utf-8"/><title>Student Result Card</title>${PRINT_STYLES}</head>
+      <head><meta charset="utf-8"/><title>Student Result Card</title>${PRINT_STYLES}<style>
+        @page { size: A4 portrait; margin: 14mm; }
+        .result-print-header { text-align: center; border-bottom: 2px solid #777; padding-bottom: 14px; margin-bottom: 18px; }
+        .result-print-logo { display: block; width: 82px; height: 82px; object-fit: contain; margin: 0 auto 9px; }
+        .result-print-header h1 { color: #1a1a2e; font-size: 24px; font-weight: 800; margin: 0; }
+        .result-print-contact { font-size: 13px; color: #444; margin-top: 5px; }
+        .result-print-session { display: inline-block; margin-top: 6px; font-size: 13px; font-weight: 700; color: #1a1a2e; }
+        .result-heading h2 { color: #1a1a2e; font-size: 21px; font-weight: 800; }
+        .result-meta { font-size: 14px; }
+        .slip { max-width: 100%; }
+        .slip-row, .slip-value { font-size: 15px; }
+        .slip table { font-size: 14px; }
+        .slip table th { font-size: 13px; padding: 10px 9px; }
+        .slip table td { font-size: 14px; padding: 9px; }
+      </style></head>
       <body>
-        ${institutionHeader(viewSession?.name)}
+        ${resultPrintHeader(viewSession?.name)}
         <div class="result-heading">
           <h2>${isUrdu ? 'مکمل نتیجہ کارڈ' : 'Complete Student Result Card'}</h2>
           <div class="result-meta"><strong>Class:</strong> ${r.className} &nbsp; | &nbsp; <strong>Section:</strong> ${student?.section || '-'} &nbsp; | &nbsp; <strong>Session:</strong> ${viewSession?.name || '-'}</div>
@@ -202,8 +241,8 @@ export default function Results() {
           <div class="slip-row"><span class="slip-label">${isUrdu ? 'رول نمبر:' : 'Roll No:'}</span><span class="slip-value" style="font-family:monospace;font-weight:bold">${r.rollNo}</span></div>
           <table>
             <thead><tr><th>Subject</th><th>Obtained Marks</th><th>Total Marks</th><th>Percentage</th><th>Grade</th></tr></thead>
-            <tbody>${studentResults.map(result => `<tr><td>${result.subject}</td><td>${result.marks}</td><td>${result.totalMarks}</td><td>${safePct(result.marks, result.totalMarks)}%</td><td style="font-weight:bold;color:${getGradeColor(result.grade)}">${result.grade}</td></tr>`).join('')}</tbody>
-            <tfoot><tr><th>Total</th><th>${obtained}</th><th>${total}</th><th>${percentage.toFixed(2)}%</th><th>-</th></tr></tfoot>
+            <tbody>${subjectRows.map(subject => { const result = studentResults.find(item => item.subject === subject); const subjectTotal = result?.totalMarks ?? 100; const subjectMarks = result?.marks ?? 0; return `<tr><td>${subject}</td><td>${subjectMarks}</td><td>${subjectTotal}</td><td>${safePct(subjectMarks, subjectTotal)}%</td><td style="font-weight:bold;color:${getGradeColor(result?.grade ?? calculateGrade(subjectMarks, subjectTotal))}">${result?.grade ?? calculateGrade(subjectMarks, subjectTotal)}</td></tr>`; }).join('')}</tbody>
+            <tfoot><tr><th>Total</th><th>${totalObtainedConfigured}</th><th>${totalConfigured}</th><th>${configuredPercentage.toFixed(2)}%</th><th>${calculateGrade(totalObtainedConfigured, totalConfigured)}</th></tr></tfoot>
           </table>
         </div>
         <p class="footer-note">Printed on ${new Date().toLocaleDateString()} — Jamia Taleem-ul-Quran Lil-Banat</p>
@@ -222,7 +261,7 @@ export default function Results() {
     const classStudentIds = new Set(classStudents.map(student => student.id));
     const classResults = resultsWithStudentInfo.filter(result => classStudentIds.has(result.studentId));
     const classDepartment = classStudents[0]?.department;
-    const configuredSubjects = state.subjectConfigs.find(config =>
+    const configuredSubjects = classDepartment === 'school' ? getSchoolSubjects(classFilter) : classDepartment === 'madrasa' ? getMadrasaSubjects(classFilter) : state.subjectConfigs.find(config =>
       config.department === classDepartment
       && config.className === classFilter
       && config.sessionId === (viewSession?.id ?? state.activeSessionId)
@@ -258,18 +297,45 @@ export default function Results() {
       : '-';
     const sessionName = viewSession?.name ?? state.academicSessions.find(s => s.id === state.activeSessionId)?.name ?? '-';
     const sectionLabel = sectionFilter || 'All Sections';
+    const examDate = classResults.find(result => result.examDate)?.examDate;
     const subjectCell = (row: typeof rows[number], subject: string) => {
       const result = row.studentResults.find(item => item.subject === subject);
       return result ? `${result.marks}` : '-';
     };
 
     const html = `
-      <!DOCTYPE html><html><head><meta charset="utf-8"/><title>Overall Class Result</title>${PRINT_STYLES}</head>
+      <!DOCTYPE html><html><head><meta charset="utf-8"/><title>Overall Class Result</title>${PRINT_STYLES}<style>
+        @page { size: A4 landscape; margin: 8mm; }
+        body { padding: 0; font-family: "Times New Roman", Georgia, serif; font-size: 13px; color: #111; }
+        .print-watermark { display: none; }
+        .result-print-header { text-align: center; border-bottom: 2px solid #111; padding-bottom: 8px; margin-bottom: 8px; }
+        .result-print-logo { display: block; width: 70px; height: 70px; object-fit: contain; margin: 0 auto 5px; }
+        .result-print-header h1 { color: #111; font-size: 25px; font-weight: 800; margin: 0; }
+        .result-print-contact { font-size: 12px; color: #222; margin-top: 2px; }
+        .result-print-session { display: none; }
+        .result-heading { margin: 6px 0 10px; text-align: center; }
+        .result-heading h2 { color: #111; font-size: 19px; font-weight: 800; margin-bottom: 3px; }
+        .result-meta { font-size: 13px; }
+        .tabulation-subtitle { text-align: center; font-size: 16px; font-weight: 700; margin: 2px 0; }
+        .class-result-table { width: 100%; margin: 0 auto; font-size: 11px; table-layout: fixed; border: 1.5px solid #111; }
+        .class-result-table th, .class-result-table td { border: 1px solid #111; padding: 5px 3px; font-size: 11px; text-align: center; color: #111; }
+        .class-result-table th { background: #fff; font-weight: 800; white-space: normal; }
+        .class-result-table td { background: #fff !important; }
+        .class-result-table th:nth-child(1), .class-result-table td:nth-child(1) { width: 3%; }
+        .class-result-table th:nth-child(2), .class-result-table td:nth-child(2) { width: 7%; }
+        .class-result-table th:nth-child(3), .class-result-table td:nth-child(3) { width: 15%; min-width: 0; font-size: 12px; white-space: normal; text-align: left; }
+        .class-result-table th small { font-size: 9px; }
+        .summary-title { display: block; width: fit-content; border: 1px solid #111; border-bottom: 0; padding: 5px 10px; margin: 14px 0 0; font-size: 14px; font-weight: 800; }
+        .summary-table { width: auto; min-width: 0; margin: 0; font-size: 13px; border: 1px solid #111; }
+        .summary-table th, .summary-table td { border: 1px solid #111; color: #111; background: #fff; font-size: 13px; padding: 6px 14px; text-align: center; }
+        .footer-note { font-size: 11px; margin-top: 14px; }
+      </style></head>
       <body>
-        ${institutionHeader(sessionName)}
+        ${resultPrintHeader(sessionName)}
         <div class="result-heading">
           <h2>Overall Class Result</h2>
-          <div class="result-meta"><strong>Class:</strong> ${classFilter} &nbsp; | &nbsp; <strong>Section:</strong> ${sectionLabel} &nbsp; | &nbsp; <strong>Session:</strong> ${sessionName}</div>
+          <div class="tabulation-subtitle">Tabulation Sheet For Session: ${sessionName}</div>
+          <div class="tabulation-subtitle">Class: ${classFilter}${sectionFilter ? ` &nbsp; | &nbsp; Section: ${sectionLabel}` : ''}${examDate ? ` &nbsp; | &nbsp; Exam Date: ${examDate}` : ''}</div>
         </div>
         <table class="class-result-table">
           <thead><tr><th>#</th><th>Exam Roll</th><th>Student Name</th>${subjects.map(subject => `<th>${subject}<br><small>Marks</small></th>`).join('')}<th>Obt. Marks</th><th>Total</th><th>Percentage</th><th>Position</th><th>Grade</th></tr></thead>
@@ -289,6 +355,39 @@ export default function Results() {
         <p class="footer-note">Printed on ${new Date().toLocaleDateString()} — Jamia Taleem-ul-Quran Lil-Banat</p>
       </body></html>`;
     printHTML(html, 'Overall_Class_Result');
+  };
+
+  const exportClassResult = () => {
+    if (!classFilter) {
+      toast.error(isUrdu ? 'پہلے جماعت منتخب کریں' : 'Select a class first');
+      return;
+    }
+    const classStudents = sessionStudents.filter(student => student.class === classFilter && (!sectionFilter || student.section === sectionFilter));
+    const classStudentIds = new Set(classStudents.map(student => student.id));
+    const classResults = resultsWithStudentInfo.filter(result => classStudentIds.has(result.studentId));
+    const subjects = (department === 'school' || classStudents[0]?.department === 'school') ? getSchoolSubjects(classFilter) : (department === 'madrasa' || classStudents[0]?.department === 'madrasa') ? getMadrasaSubjects(classFilter) : state.subjectConfigs.find(config => config.className === classFilter && config.department === (department ?? classStudents[0]?.department) && config.sessionId === (viewSession?.id ?? state.activeSessionId))?.subjects
+      ?? state.subjectConfigs.find(config => config.className === classFilter && config.department === (department ?? classStudents[0]?.department) && !config.sessionId)?.subjects
+      ?? [...new Set(classResults.map(result => result.subject))].sort();
+    const rowsWithMissing = classStudents.map(student => {
+      const studentResults = classResults.filter(result => result.studentId === student.id);
+      if (studentResults.length === 0) return null;
+      const obtained = studentResults.reduce((sum, result) => sum + result.marks, 0);
+      const total = studentResults.reduce((sum, result) => sum + result.totalMarks, 0);
+      return {
+        'Student Name': student.name,
+        'Roll No': student.rollNo || '-',
+        Class: student.class,
+        Section: student.section || '-',
+        ...Object.fromEntries(subjects.map(subject => [subject, studentResults.find(result => result.subject === subject)?.marks ?? '-'])),
+        'Obtained Marks': obtained,
+        'Total Marks': total,
+        Percentage: total ? `${((obtained / total) * 100).toFixed(2)}%` : '-',
+        Grade: total ? calculateGrade(obtained, total) : '-',
+        Status: total && obtained / total >= 0.4 ? 'Pass' : total ? 'Fail' : 'Pending',
+      };
+    });
+    const rows = rowsWithMissing.filter((row): row is NonNullable<typeof row> => row !== null);
+    downloadExcel(rows, `${department === 'madrasa' ? 'Madrasa' : 'School'}_${classFilter.replace(/[^a-z0-9]+/gi, '_')}_Results`);
   };
 
   const handleSave = () => {
@@ -385,6 +484,13 @@ export default function Results() {
             {isUrdu ? 'کلاس رزلٹ پرنٹ' : 'Print Class Result'}
           </button>
           <button
+            onClick={exportClassResult}
+            className="neu-btn px-4 py-2.5 rounded-xl text-sm font-medium flex items-center gap-2"
+          >
+            <Download className="w-4 h-4 text-[#E4572E]" />
+            {isUrdu ? 'کلاس ایکسل' : 'Export Class Excel'}
+          </button>
+          <button
             onClick={() => downloadExcel(
               filteredResults.map(r => ({
                 'Roll No': r.rollNo, Student: r.studentName, Class: r.className,
@@ -412,9 +518,10 @@ export default function Results() {
       <div className="neu-inset-sm rounded-xl px-3 py-1 w-full sm:max-w-xs">
         <select className="w-full bg-transparent border-none outline-none h-9 text-sm cursor-pointer" value={classFilter} onChange={e => setClassFilter(e.target.value)}>
           <option value="">{isUrdu ? 'تمام جماعتیں' : 'All Classes'}</option>
-          {ALL_CLASSES.map(c => <option key={c} value={c}>{c}</option>)}
+          {availableClasses.map(c => <option key={c} value={c}>{c}</option>)}
         </select>
       </div>
+      {classFilter && <div className="neu-inset-sm rounded-xl px-3 flex items-center gap-2 h-10 w-full sm:max-w-xs"><Search className="w-4 h-4 opacity-40" /><input className="bg-transparent outline-none text-sm w-full" placeholder={isUrdu ? 'نام یا رول نمبر تلاش کریں...' : 'Search student by name or roll no...'} value={studentSearch} onChange={event => setStudentSearch(event.target.value)} /></div>}
       {classFilter && availableSections.length > 0 && (
         <div className="neu-inset-sm rounded-xl px-3 py-1 w-full sm:max-w-xs">
           <select className="w-full bg-transparent border-none outline-none h-9 text-sm cursor-pointer" value={sectionFilter} onChange={e => setSectionFilter(e.target.value)}>
@@ -450,7 +557,7 @@ export default function Results() {
                       </td>
                       <td className="px-5 py-4 opacity-70">{group.results.length ? `${group.results.length} ${isUrdu ? 'مضامین' : group.results.length === 1 ? 'subject' : 'subjects'}` : <span className="opacity-50">{isUrdu ? 'ابھی کوئی نتیجہ نہیں' : 'No results yet'}</span>}</td>
                       <td className="px-5 py-4 font-semibold">{group.results.length ? `${safePct(obtained, total)}%` : '-'}</td>
-                      <td className="px-5 py-4 text-right"><button type="button" aria-label={isExpanded ? 'Collapse subjects' : 'Expand subjects'} onClick={event => { event.stopPropagation(); setExpandedStudentId(isExpanded ? null : group.studentId); }} className="neu-btn w-8 h-8 rounded-lg inline-flex items-center justify-center"><ChevronDown className={`w-4 h-4 transition-transform ${isExpanded ? 'rotate-180' : ''}`} /></button></td>
+                      <td className="px-5 py-4 text-right"><div className="flex gap-2 justify-end"><button type="button" aria-label="Print student result" disabled={group.results.length === 0} onClick={event => { event.stopPropagation(); if (group.results[0]) printHTML(individualResultHTML(group.results[0]), 'Result_Card'); }} className="neu-btn w-8 h-8 rounded-lg inline-flex items-center justify-center text-[#1C2E6B] disabled:opacity-30"><Printer className="w-3.5 h-3.5" /></button><button type="button" aria-label={isExpanded ? 'Collapse subjects' : 'Expand subjects'} onClick={event => { event.stopPropagation(); setExpandedStudentId(isExpanded ? null : group.studentId); }} className="neu-btn w-8 h-8 rounded-lg inline-flex items-center justify-center"><ChevronDown className={`w-4 h-4 transition-transform ${isExpanded ? 'rotate-180' : ''}`} /></button></div></td>
                     </tr>
                     {isExpanded && (
                       <tr className="border-b border-[var(--neu-dark)]/10">
@@ -510,7 +617,7 @@ export default function Results() {
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <label className="text-sm font-semibold">Name<input className="neu-input w-full rounded-xl px-3 py-2 mt-1 font-normal" value={profileForm.name || ''} onChange={event => setProfileForm({ ...profileForm, name: event.target.value })} /></label>
                 <label className="text-sm font-semibold">Father Name<input className="neu-input w-full rounded-xl px-3 py-2 mt-1 font-normal" value={profileForm.fatherName || ''} onChange={event => setProfileForm({ ...profileForm, fatherName: event.target.value })} /></label>
-                <label className="text-sm font-semibold">Date of Birth *<input type="date" required className="neu-input w-full rounded-xl px-3 py-2 mt-1 font-normal" value={profileForm.dob || ''} onChange={event => setProfileForm({ ...profileForm, dob: event.target.value })} /></label>
+                <label className="text-sm font-semibold">Date of Birth *<input type="text" inputMode="numeric" placeholder="DD/MM/YYYY" maxLength={10} required className="neu-input w-full rounded-xl px-3 py-2 mt-1 font-normal" value={formatAdminDate(profileForm.dob) || profileForm.dob || ''} onChange={event => setProfileForm({ ...profileForm, dob: event.target.value.replace(/[^\d/]/g, '').slice(0, 10) })} /></label>
                 <label className="text-sm font-semibold">Class *<select className="neu-input w-full rounded-xl px-3 py-2 mt-1 font-normal" value={profileForm.class || ''} onChange={event => setProfileForm({ ...profileForm, class: event.target.value })}><option value="">Select class</option>{ALL_CLASSES.map(className => <option key={className} value={className}>{className}</option>)}</select></label>
                 <label className="text-sm font-semibold">Section<input className="neu-input w-full rounded-xl px-3 py-2 mt-1 font-normal" value={profileForm.section || ''} onChange={event => setProfileForm({ ...profileForm, section: event.target.value })} /></label>
                 <label className="text-sm font-semibold">Phone<input className="neu-input w-full rounded-xl px-3 py-2 mt-1 font-normal" value={profileForm.phone || ''} onChange={event => setProfileForm({ ...profileForm, phone: event.target.value })} /></label>
@@ -518,7 +625,7 @@ export default function Results() {
             ) : (
               <div className="grid grid-cols-2 gap-3 text-sm">
                 {[
-                  ['Father Name', profileStudent.fatherName || '-'], ['Date of Birth', profileStudent.dob || '-'],
+                  ['Father Name', profileStudent.fatherName || '-'], ['Date of Birth', formatAdminDate(profileStudent.dob) || '-'],
                   ['Class', profileStudent.class], ['Section', profileStudent.section || '-'],
                   ['Department', profileStudent.department === 'madrasa' ? 'Madrasa' : 'School'], ['Phone', profileStudent.phone || '-'],
                   ['CNIC / B-Form', profileStudent.cnic || '-'], ['Status', profileStudent.status],
@@ -551,7 +658,7 @@ export default function Results() {
                 <div className="neu-inset-sm rounded-xl px-3 py-1">
                   <select className="w-full bg-transparent border-none outline-none h-9 text-sm cursor-pointer" value={formData.className || ''} onChange={e => setFormData({ ...formData, className: e.target.value, studentId: '' })}>
                     <option value="">{isUrdu ? 'جماعت منتخب کریں' : 'Select class...'}</option>
-                    {ALL_CLASSES.map(c => <option key={c} value={c}>{c}</option>)}
+                    {availableClasses.map(c => <option key={c} value={c}>{c}</option>)}
                   </select>
                 </div>
               </div>

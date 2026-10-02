@@ -1,8 +1,9 @@
 import React, { createContext, useContext, useReducer, useEffect, ReactNode } from 'react';
 import {
   State, Language, Student, Teacher, FeeRecord, Announcement, Result,
-  AcademicSession, RollNumberRange, SubjectConfig, DEFAULT_ROLL_RANGES, DEFAULT_SUBJECT_CONFIGS, InstitutionProfile, ZakatIncome, ZakatExpense,
+  AcademicSession, RollNumberRange, SubjectConfig, DEFAULT_ROLL_RANGES, DEFAULT_SUBJECT_CONFIGS, InstitutionProfile, ZakatIncome, ZakatExpense, Portal, SCHOOL_CLASSES,
 } from '@/types';
+import { MADRASA_CLASSES } from '@/types';
 import { translations } from '@/lib/i18n';
 import { stateApi } from '@/lib/api';
 
@@ -44,11 +45,19 @@ function createDefaultSession(): AcademicSession {
 type Action =
   | { type: 'SET_LANGUAGE'; payload: Language }
   | { type: 'TOGGLE_SIDEBAR' }
-  | { type: 'LOGIN' }
+  | { type: 'LOGIN'; payload: Portal }
   | { type: 'LOGOUT' }
   | { type: 'HYDRATE_STATE'; payload: Partial<State> }
   | { type: 'SET_ADMIN_PASSWORD'; payload: string }
+  | { type: 'SET_ADMIN_USERNAME'; payload: string }
   | { type: 'SAVE_INSTITUTION_PROFILE'; payload: InstitutionProfile }
+  | { type: 'SET_SCHOOL_CLASSES'; payload: string[] }
+  | { type: 'SET_SCHOOL_SUBJECTS'; payload: string[] }
+  | { type: 'SET_SCHOOL_CLASS_SUBJECTS'; payload: { className: string; subjects: string[] } }
+  | { type: 'SET_SCHOOL_ROLL_RANGE'; payload: { start: number; end: number } }
+  | { type: 'SET_MADRASA_CLASSES'; payload: string[] }
+  | { type: 'SET_MADRASA_CLASS_SUBJECTS'; payload: { className: string; subjects: string[] } }
+  | { type: 'SET_MADRASA_CLASS_ROLL_RANGE'; payload: { className: string; rangeStart: number; rangeEnd: number } }
   // Students
   | { type: 'ADD_STUDENT'; payload: Student }
   | { type: 'UPDATE_STUDENT'; payload: Student }
@@ -57,6 +66,9 @@ type Action =
   | { type: 'ADD_TEACHER'; payload: Teacher }
   | { type: 'UPDATE_TEACHER'; payload: Teacher }
   | { type: 'DELETE_TEACHER'; payload: string }
+  | { type: 'ADD_MADRASA_TEACHER'; payload: Teacher }
+  | { type: 'UPDATE_MADRASA_TEACHER'; payload: Teacher }
+  | { type: 'DELETE_MADRASA_TEACHER'; payload: string }
   // Fee records
   | { type: 'ADD_FEE_RECORD'; payload: FeeRecord }
   | { type: 'UPDATE_FEE_RECORD'; payload: FeeRecord }
@@ -85,6 +97,7 @@ type Action =
   | { type: 'SET_VIEW_SESSION'; payload: string | null }
   // Roll Number Ranges
   | { type: 'UPDATE_ROLL_RANGE'; payload: RollNumberRange }
+  | { type: 'SET_SCHOOL_CLASS_ROLL_RANGE'; payload: { className: string; rangeStart: number; rangeEnd: number } }
   | { type: 'RESET_ROLL_RANGES' }
   // Subject Configs
   | { type: 'UPSERT_SUBJECT_CONFIG'; payload: SubjectConfig }
@@ -93,14 +106,35 @@ type Action =
 const defaultSession = createDefaultSession();
 
 const saved = loadState();
+const defaultSchoolSubjects = ['English', 'Urdu', 'Mathematics', 'General Science', 'Islamiat', 'Social Studies', 'Computer'];
+const defaultMadrasaSubjects = ['قرآن مجید', 'تجوید', 'حدیث', 'فقہ', 'عربی', 'اردو'];
+const migratedSchoolSubjectsByClass = saved.schoolSubjectsByClass ?? Object.fromEntries(
+  (saved.schoolClasses?.length ? saved.schoolClasses : SCHOOL_CLASSES).map(className => {
+    const configured = saved.subjectConfigs?.find(config => config.department === 'school' && config.className === className && !config.sessionId)?.subjects;
+    return [className, configured ?? saved.schoolSubjects ?? defaultSchoolSubjects];
+  })
+);
+const migratedMadrasaSubjectsByClass = saved.madrasaSubjectsByClass ?? Object.fromEntries(
+  (saved.madrasaClasses?.length ? saved.madrasaClasses : MADRASA_CLASSES).map(className => {
+    const configured = saved.subjectConfigs?.find(config => config.department === 'madrasa' && config.className === className && !config.sessionId)?.subjects;
+    return [className, configured ?? defaultMadrasaSubjects];
+  })
+);
 
 const initialState: State = {
   language: saved.language ?? 'en',
+  portal: saved.portal ?? null,
   isAuthenticated: saved.isAuthenticated ?? false,
   sidebarOpen: true,
   students: saved.students ?? [],
   teachers: saved.teachers ?? [],
-  feeRecords: saved.feeRecords ?? [],
+  feeRecords: (saved.feeRecords ?? []).map(record => ({
+    ...record,
+    paidAmount: record.paidAmount ?? (record.status === 'paid' ? record.amount : 0),
+    paymentDate: record.paymentDate ?? record.month,
+    voucherNo: record.voucherNo ?? record.id,
+    studentType: record.studentType ?? saved.students?.find(student => student.id === record.studentId)?.department,
+  })),
   zakatIncome: saved.zakatIncome ?? [],
   zakatExpenses: saved.zakatExpenses ?? [],
   announcements: saved.announcements ?? [],
@@ -116,6 +150,7 @@ const initialState: State = {
     ? saved.subjectConfigs
     : DEFAULT_SUBJECT_CONFIGS,
   adminPassword: saved.adminPassword ?? 'TalhaSaif123',
+  adminUsername: saved.adminUsername ?? 'Talha',
   institutionProfile: saved.institutionProfile ?? {
     nameEn: 'Jamia Taleem-ul-Quran Lil-Banat',
     nameUr: 'جامعہ تعلیم القرآن للبنات',
@@ -123,6 +158,13 @@ const initialState: State = {
     phone: '+92 312 5654118',
     address: 'Peshawar, Pakistan',
   },
+  schoolClasses: saved.schoolClasses?.length ? saved.schoolClasses : [...SCHOOL_CLASSES],
+  schoolSubjects: saved.schoolSubjects?.length ? saved.schoolSubjects : defaultSchoolSubjects,
+  schoolSubjectsByClass: migratedSchoolSubjectsByClass,
+  schoolRollRange: saved.schoolRollRange ?? { start: 1, end: 1950 },
+  madrasaClasses: saved.madrasaClasses?.length ? saved.madrasaClasses : [...MADRASA_CLASSES],
+  madrasaSubjectsByClass: migratedMadrasaSubjectsByClass,
+  madrasaTeachers: saved.madrasaTeachers ?? [],
   viewSessionId: null,
 };
 
@@ -130,11 +172,43 @@ function reducer(state: State, action: Action): State {
   switch (action.type) {
     case 'SET_LANGUAGE':   return { ...state, language: action.payload };
     case 'TOGGLE_SIDEBAR': return { ...state, sidebarOpen: !state.sidebarOpen };
-    case 'LOGIN':          return { ...state, isAuthenticated: true };
+    case 'LOGIN':          return { ...state, isAuthenticated: true, portal: action.payload, language: action.payload === 'madrasa' ? 'ur' : 'en' };
     case 'LOGOUT':         return { ...state, isAuthenticated: false };
     case 'HYDRATE_STATE': return { ...state, ...action.payload, sidebarOpen: true, viewSessionId: null };
     case 'SET_ADMIN_PASSWORD': return { ...state, adminPassword: action.payload };
+    case 'SET_ADMIN_USERNAME': return { ...state, adminUsername: action.payload };
     case 'SAVE_INSTITUTION_PROFILE': return { ...state, institutionProfile: action.payload };
+    case 'SET_SCHOOL_CLASSES': return {
+      ...state,
+      schoolClasses: action.payload,
+      schoolSubjectsByClass: Object.fromEntries(action.payload.map(className => [className, state.schoolSubjectsByClass[className] ?? []])),
+    };
+    case 'SET_SCHOOL_SUBJECTS': return { ...state, schoolSubjects: action.payload };
+    case 'SET_SCHOOL_CLASS_SUBJECTS': return {
+      ...state,
+      schoolSubjectsByClass: { ...state.schoolSubjectsByClass, [action.payload.className]: action.payload.subjects },
+    };
+    case 'SET_SCHOOL_ROLL_RANGE': return { ...state, schoolRollRange: action.payload };
+    case 'SET_MADRASA_CLASSES': return {
+      ...state,
+      madrasaClasses: action.payload,
+      madrasaSubjectsByClass: Object.fromEntries(action.payload.map(className => [className, state.madrasaSubjectsByClass[className] ?? []])),
+    };
+    case 'SET_MADRASA_CLASS_SUBJECTS': return {
+      ...state,
+      madrasaSubjectsByClass: { ...state.madrasaSubjectsByClass, [action.payload.className]: action.payload.subjects },
+    };
+    case 'SET_MADRASA_CLASS_ROLL_RANGE': {
+      const existing = state.rollNumberRanges.find(range => range.department === 'madrasa' && range.className === action.payload.className);
+      const nextRange: RollNumberRange = {
+        id: existing?.id ?? `madrasa-${action.payload.className.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`,
+        department: 'madrasa',
+        className: action.payload.className,
+        rangeStart: action.payload.rangeStart,
+        rangeEnd: action.payload.rangeEnd,
+      };
+      return { ...state, rollNumberRanges: existing ? state.rollNumberRanges.map(range => range.id === existing.id ? nextRange : range) : [...state.rollNumberRanges, nextRange] };
+    }
 
     case 'ADD_STUDENT':    return { ...state, students: [...state.students, action.payload] };
     case 'UPDATE_STUDENT': return { ...state, students: state.students.map(s => s.id === action.payload.id ? action.payload : s) };
@@ -148,6 +222,9 @@ function reducer(state: State, action: Action): State {
     case 'ADD_TEACHER':    return { ...state, teachers: [...state.teachers, action.payload] };
     case 'UPDATE_TEACHER': return { ...state, teachers: state.teachers.map(t => t.id === action.payload.id ? action.payload : t) };
     case 'DELETE_TEACHER': return { ...state, teachers: state.teachers.filter(t => t.id !== action.payload) };
+    case 'ADD_MADRASA_TEACHER': return { ...state, madrasaTeachers: [...state.madrasaTeachers, action.payload] };
+    case 'UPDATE_MADRASA_TEACHER': return { ...state, madrasaTeachers: state.madrasaTeachers.map(t => t.id === action.payload.id ? action.payload : t) };
+    case 'DELETE_MADRASA_TEACHER': return { ...state, madrasaTeachers: state.madrasaTeachers.filter(t => t.id !== action.payload) };
 
     case 'ADD_FEE_RECORD':    return { ...state, feeRecords: [...state.feeRecords, action.payload] };
     case 'UPDATE_FEE_RECORD': return { ...state, feeRecords: state.feeRecords.map(f => f.id === action.payload.id ? action.payload : f) };
@@ -212,6 +289,22 @@ function reducer(state: State, action: Action): State {
       ...state,
       rollNumberRanges: state.rollNumberRanges.map(r => r.id === action.payload.id ? action.payload : r),
     };
+    case 'SET_SCHOOL_CLASS_ROLL_RANGE': {
+      const existing = state.rollNumberRanges.find(range => range.department === 'school' && range.className === action.payload.className);
+      const nextRange: RollNumberRange = {
+        id: existing?.id ?? `school-${action.payload.className.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`,
+        department: 'school',
+        className: action.payload.className,
+        rangeStart: action.payload.rangeStart,
+        rangeEnd: action.payload.rangeEnd,
+      };
+      return {
+        ...state,
+        rollNumberRanges: existing
+          ? state.rollNumberRanges.map(range => range.id === existing.id ? nextRange : range)
+          : [...state.rollNumberRanges, nextRange],
+      };
+    }
     case 'RESET_ROLL_RANGES': return { ...state, rollNumberRanges: DEFAULT_ROLL_RANGES };
 
     case 'UPSERT_SUBJECT_CONFIG': {
@@ -235,7 +328,7 @@ interface AppContextValue {
   state: State;
   dispatch: React.Dispatch<Action>;
   t: (key: string) => string;
-  login: (username: string, password: string) => Promise<boolean>;
+  login: (username: string, password: string, portal: Portal) => Promise<boolean>;
   logout: () => void;
   setLanguage: (lang: Language) => void;
   toggleLanguage: () => void;
@@ -253,26 +346,26 @@ const AppContext = createContext<AppContextValue | null>(null);
 
 export const AppProvider = ({ children }: { children: ReactNode }) => {
   const [state, dispatch] = useReducer(reducer, initialState);
-  const [remoteReady, setRemoteReady] = React.useState(false);
+  const [remoteStatus, setRemoteStatus] = React.useState<'loading' | 'ready' | 'failed'>('loading');
 
   useEffect(() => {
     stateApi.get()
       .then(remoteState => {
         if (remoteState) dispatch({ type: 'HYDRATE_STATE', payload: remoteState as Partial<State> });
+        setRemoteStatus('ready');
       })
-      .catch(() => undefined)
-      .finally(() => setRemoteReady(true));
+      .catch(() => setRemoteStatus('failed'));
   }, []);
 
-  // Persist to localStorage on every state change
+  // Never push local/default state after a failed remote load.
   useEffect(() => {
-    if (!remoteReady) return;
+    if (remoteStatus !== 'ready') return;
     saveState(state);
     const { sidebarOpen, viewSessionId, ...persistedState } = state;
     void sidebarOpen;
     void viewSessionId;
     stateApi.save(persistedState as unknown as Record<string, unknown>).catch(() => undefined);
-  }, [state, remoteReady]);
+  }, [state, remoteStatus]);
 
   const t = (key: string): string => {
     const lang = state.language;
@@ -280,9 +373,9 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     return dict?.[key] ?? key;
   };
 
-  const login = async (username: string, password: string): Promise<boolean> => {
-    if (username === 'Talha' && password === state.adminPassword) {
-      dispatch({ type: 'LOGIN' });
+  const login = async (username: string, password: string, portal: Portal): Promise<boolean> => {
+    if (username === state.adminUsername && password === state.adminPassword) {
+      dispatch({ type: 'LOGIN', payload: portal });
       return true;
     }
     return false;

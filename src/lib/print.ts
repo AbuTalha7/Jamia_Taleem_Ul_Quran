@@ -20,9 +20,42 @@ export function printHTML(html: string, title = 'Print') {
   w.document.close();
   w.document.title = title;
   w.focus();
-  setTimeout(() => {
-    w.print();
-  }, 600);
+  const images = Array.from(w.document.images);
+  const waitForImages = Promise.all(images.map(image => image.complete
+    ? Promise.resolve()
+    : new Promise<void>(resolve => {
+      image.addEventListener('load', () => resolve(), { once: true });
+      image.addEventListener('error', () => resolve(), { once: true });
+    })));
+  void Promise.race([
+    waitForImages,
+    new Promise<void>(resolve => window.setTimeout(resolve, 2000)),
+  ]).then(() => w.print());
+}
+
+export function printRecord(title: string, content: string, options: { sessionName?: string; landscape?: boolean } = {}) {
+  const profile = getPrintProfile();
+  const logoSrc = `${import.meta.env.BASE_URL}logo.jpeg`;
+  const header = printHeader(profile, logoSrc, options.sessionName);
+  const pageRule = options.landscape ? '@page { size: A4 landscape; margin: 12mm; }' : '@page { size: A4 portrait; margin: 16mm; }';
+  printHTML(`<!DOCTYPE html><html><head><meta charset="utf-8"/><title>${title}</title>${PRINT_STYLES}<style>
+    ${pageRule}
+    .header { display:block; text-align:center; border-bottom:2px solid #222; padding-bottom:12px; margin-bottom:18px; }
+    .header-logo { display:block; width:72px; height:72px; object-fit:contain; margin:0 auto 7px; }
+    .header-text { display:block; }
+    .header-text h1 { color:#111; font-size:24px; font-weight:800; margin:0; }
+    .header-text .contact { color:#333; font-size:12px; margin-top:4px; }
+    .header-text .session-badge { display:inline-block; background:none; color:#111; padding:0; font-size:12px; font-weight:700; margin-top:4px; }
+    .record-title { text-align:center; font-size:20px; font-weight:800; margin:10px 0 14px; }
+    .record-table { width:100%; border-collapse:collapse; margin:0 auto; }
+    .record-table th, .record-table td { border:1px solid #222; padding:8px 10px; text-align:left; font-size:13px; color:#111; }
+    .record-table th { width:28%; font-weight:800; background:#fff; color:#111; }
+    .print-table { width:100%; border-collapse:collapse; margin:0 auto; table-layout:fixed; }
+    .print-table thead { display:table-header-group; }
+    .print-table th, .print-table td { border:1px solid #222; padding:6px 5px; text-align:center; font-size:11px; color:#111; }
+    .print-table th { font-weight:800; background:#fff; color:#111; }
+    .print-footer { text-align:center; color:#555; font-size:11px; margin-top:20px; }
+  </style></head><body>${header}<div class="record-title">${title}</div>${content}<p class="print-footer">Printed on ${new Date().toLocaleDateString()}</p></body></html>`, title.replace(/\s+/g, '_'));
 }
 
 /** Shared CSS injected into every print window — includes Jameel Noori Nastaleeq / Noto Nastaliq Urdu */
@@ -89,20 +122,20 @@ export const PRINT_STYLES = `
 
     /* ── Institution Header ──────────────────────────── */
     .header {
-      display: flex;
-      align-items: center;
-      gap: 16px;
+      display: block;
+      text-align: center;
       border-bottom: 3px double #1C2E6B;
       padding-bottom: 14px;
       margin-bottom: 18px;
     }
     .header-logo {
+      display: block;
       width: 72px;
       height: 72px;
       object-fit: contain;
-      flex-shrink: 0;
+      margin: 0 auto 8px;
     }
-    .header-text { flex: 1; text-align: center; }
+    .header-text { display: block; text-align: center; }
     .header-text h1 {
       color: #1C2E6B;
       font-size: 22px;
@@ -291,6 +324,11 @@ export const PRINT_STYLES = `
 
 /** Build institution header HTML, optionally showing academic session */
 export function institutionHeader(sessionName?: string, language: 'en' | 'ur' = getPrintLanguage()) {
+  const profile = getPrintProfile();
+  return printHeader(profile, `${import.meta.env.BASE_URL}logo.jpeg`, sessionName, language);
+}
+
+function getPrintProfile() {
   let profile = {
     nameEn: 'Jamia Taleem-ul-Quran Lil-Banat',
     nameUr: 'جامعہ تعلیم القرآن للبنات',
@@ -301,17 +339,19 @@ export function institutionHeader(sessionName?: string, language: 'en' | 'ur' = 
     const saved = JSON.parse(localStorage.getItem('jamia_portal_v2') || '{}');
     if (saved.institutionProfile) profile = { ...profile, ...saved.institutionProfile };
   } catch { /* use defaults when storage is unavailable */ }
+  return profile;
+}
+
+function printHeader(profile: { nameEn: string; nameUr: string; phone: string; address: string }, logoSrc: string, sessionName?: string, language: 'en' | 'ur' = getPrintLanguage()) {
   const isUrdu = language === 'ur';
   const sessionLine = sessionName
     ? `<div><span class="session-badge">${isUrdu ? 'تعلیمی سال: ' : 'Academic Session: '}${sessionName}</span></div>`
     : '';
-  const logoSrc = `${import.meta.env.BASE_URL}logo.jpeg`;
   return `
     <div class="header">
       <img class="header-logo" src="${logoSrc}" alt="Jamia Taleem-ul-Quran logo" />
       <div class="header-text">
         <h1>${isUrdu ? profile.nameUr : profile.nameEn}</h1>
-        <span class="urdu-name">${profile.nameUr}</span>
         <div class="contact">${profile.address} &nbsp;|&nbsp; ${profile.phone}</div>
         ${sessionLine}
       </div>

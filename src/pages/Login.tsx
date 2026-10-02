@@ -1,19 +1,21 @@
 import React, { useState } from 'react';
 import { useLocation } from 'wouter';
 import { motion } from 'framer-motion';
-import { User, Lock, Globe } from 'lucide-react';
+import { User, Lock, Building2, BookOpen, WalletCards, Settings } from 'lucide-react';
 import { toast } from 'sonner';
 import { useApp } from '@/store';
+import { Portal } from '@/types';
 import { Logo } from '@/components/Logo';
 import { useSEO } from '@/lib/seo';
 
 export default function Login() {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
+  const [portal, setPortal] = useState<Portal>('school');
   const [, navigate] = useLocation();
-  const { login, t, state, toggleLanguage } = useApp();
+  const { login, t } = useApp();
 
-  const isUrdu = state.language === 'ur';
+  const isUrdu = portal === 'madrasa';
 
   useSEO({
     title: isUrdu ? 'ایڈمن لاگ اِن | جامعہ پورٹل' : 'Admin Login | Jamia Portal',
@@ -27,9 +29,9 @@ export default function Login() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (await login(username, password)) {
+    if (await login(username, password, portal)) {
       toast.success(isUrdu ? 'کامیابی سے لاگ ان ہو گئے' : 'Successfully logged in');
-      navigate('/dashboard');
+      navigate(portal === 'school' ? '/school-portal/dashboard' : portal === 'madrasa' ? '/madrasa-portal/dashboard' : portal === 'fees' ? '/fees-portal/dashboard' : '/portal-settings');
     } else {
       toast.error(isUrdu ? 'غلط یوزرنیم یا پاسورڈ' : 'Invalid username or password');
     }
@@ -57,16 +59,6 @@ export default function Login() {
         <rect width="100%" height="100%" fill="url(#islamic-star)" />
       </svg>
 
-      <div className="absolute top-6 right-6 z-10">
-        <button
-          onClick={toggleLanguage}
-          className="neu-btn px-4 py-2 rounded-full flex items-center gap-2 text-sm font-medium text-[var(--foreground)]"
-        >
-          <Globe className="w-4 h-4 text-[#E4572E]" />
-          {state.language === 'en' ? 'اردو' : 'English'}
-        </button>
-      </div>
-
       <motion.div
         initial={{ scale: 0.9, opacity: 0 }}
         animate={{ scale: 1, opacity: 1 }}
@@ -85,6 +77,25 @@ export default function Login() {
           <p className="text-sm font-medium opacity-70 text-center">
             {t('institutionSubtitle')}
           </p>
+          <div className="w-full mt-6">
+            <label htmlFor="portal" className="block text-sm font-semibold mb-2 text-left">
+              {isUrdu ? 'پورٹل منتخب کریں' : 'Select portal'}
+            </label>
+            <div className="relative">
+              {portal === 'school' ? <Building2 className="absolute left-3 top-3.5 w-5 h-5 text-[#2f6f8f]" /> : portal === 'madrasa' ? <BookOpen className="absolute left-3 top-3.5 w-5 h-5 text-[#263a78]" /> : portal === 'fees' ? <WalletCards className="absolute left-3 top-3.5 w-5 h-5 text-[#a86426]" /> : <Settings className="absolute left-3 top-3.5 w-5 h-5 text-[#5b6475]" />}
+              <select
+                id="portal"
+                value={portal}
+                onChange={event => setPortal(event.target.value as Portal)}
+                className="neu-input w-full rounded-xl pl-11 pr-4 h-12 text-sm"
+              >
+                <option value="school">School Portal</option>
+                <option value="madrasa">Madrasa / Dars-e-Nizami Portal</option>
+                <option value="fees">Fee Management Portal</option>
+                <option value="settings">Portal Settings</option>
+              </select>
+            </div>
+          </div>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-6">

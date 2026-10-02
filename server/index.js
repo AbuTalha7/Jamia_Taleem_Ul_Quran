@@ -13,6 +13,11 @@ if (!mongoUri) {
   process.exit(1);
 }
 
+if (process.env.NODE_ENV === 'production' && /localhost|127\.0\.0\.1/.test(mongoUri)) {
+  console.error('Refusing to start production with a localhost MongoDB URI. Configure a persistent MongoDB Atlas MONGODB_URI.');
+  process.exit(1);
+}
+
 const client = new MongoClient(mongoUri, {
   maxPoolSize: 10,
   minPoolSize: 0,
@@ -25,6 +30,7 @@ const app = express();
 app.use(express.json({ limit: '2mb' }));
 
 let stateCollection;
+let stateBackupCollection;
 
 app.get('/api/health', async (_request, response) => {
   try {
@@ -51,6 +57,15 @@ app.put('/api/state', async (request, response) => {
       response.status(400).json({ error: 'State payload must be an object' });
       return;
     }
+    const current = await stateCollection.findOne({ _id: 'singleton' });
+    if (current?.state) {
+      await stateBackupCollection.insertOne({
+        sourceId: 'singleton',
+        state: current.state,
+        originalUpdatedAt: current.updatedAt ?? null,
+        backedUpAt: new Date(),
+      });
+    }
     await stateCollection.replaceOne(
       { _id: 'singleton' },
       { _id: 'singleton', state: request.body, updatedAt: new Date() },
@@ -66,9 +81,12 @@ app.put('/api/state', async (request, response) => {
 async function start() {
   console.log('Connecting to MongoDB Atlas...');
   await client.connect();
-  stateCollection = client.db(databaseName).collection('portal_state');
+  const database = client.db(databaseName);
+  stateCollection = database.collection('portal_state');
+  stateBackupCollection = database.collection('portal_state_backups');
   await client.db(databaseName).command({ ping: 1 });
   await stateCollection.createIndex({ updatedAt: 1 });
+  await stateBackupCollection.createIndex({ backedUpAt: -1 });
   app.listen(port, '0.0.0.0', () => {
     console.log(`MongoDB API listening on http://localhost:${port}`);
   });

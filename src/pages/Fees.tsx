@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { useApp } from '@/store';
 import { FeeRecord } from '@/types';
 import { printHTML, PRINT_STYLES, institutionHeader } from '@/lib/print';
@@ -16,6 +16,7 @@ export default function Fees() {
 
   const [monthFilter, setMonthFilter] = useState('');
   const [studentSearch, setStudentSearch] = useState('');
+  const [feeStudentSearch, setFeeStudentSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'paid' | 'pending'>('all');
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingFee, setEditingFee] = useState<FeeRecord | null>(null);
@@ -28,6 +29,14 @@ export default function Fees() {
   const sessionStudents = state.viewSessionId
     ? state.students.filter(s => s.sessionId === state.viewSessionId)
     : state.students;
+  const selectedFeeStudent = sessionStudents.find(student => student.id === formData.studentId);
+  const feeStudentMatches = useMemo(() => {
+    const query = feeStudentSearch.trim().toLowerCase();
+    if (!query) return [];
+    return sessionStudents.filter(student =>
+      student.name.toLowerCase().includes(query) || student.rollNo.toLowerCase().includes(query)
+    ).slice(0, 8);
+  }, [feeStudentSearch, sessionStudents]);
 
   const allRecords = getFeeSummary().filter(f => {
     if (state.viewSessionId) {
@@ -150,7 +159,7 @@ export default function Fees() {
             {isUrdu ? 'لیجر پرنٹ' : 'Print Ledger'}
           </button>
           <button
-            onClick={() => { setEditingFee(null); setFormData({ studentId: '', amount: 0, month: '', status: 'paid', description: 'Monthly Fee' }); setDialogOpen(true); }}
+            onClick={() => { setEditingFee(null); setFeeStudentSearch(''); setFormData({ studentId: '', amount: 0, month: '', status: 'paid', description: 'Monthly Fee' }); setDialogOpen(true); }}
             className="neu-btn-primary px-5 py-2.5 rounded-xl text-white font-semibold flex items-center gap-2"
           >
             <Plus className="w-4 h-4" />
@@ -228,7 +237,7 @@ export default function Fees() {
                       <button onClick={() => printHTML(feeReceiptHTML(f), 'Fee_Receipt')} className="neu-btn w-8 h-8 rounded-lg flex items-center justify-center text-[#1C2E6B]">
                         <Printer className="w-3.5 h-3.5" />
                       </button>
-                      <button onClick={() => { setEditingFee(f); setFormData({ ...f }); setDialogOpen(true); }} className="neu-btn w-8 h-8 rounded-lg flex items-center justify-center text-[#E4572E]">
+                      <button onClick={() => { const student = sessionStudents.find(item => item.id === f.studentId); setEditingFee(f); setFeeStudentSearch(student ? `${student.name} (${student.rollNo || 'No Roll'})` : ''); setFormData({ ...f }); setDialogOpen(true); }} className="neu-btn w-8 h-8 rounded-lg flex items-center justify-center text-[#E4572E]">
                         <Edit className="w-3.5 h-3.5" />
                       </button>
                       <button onClick={() => { dispatch({ type: 'DELETE_FEE_RECORD', payload: f.id }); toast.success(isUrdu ? 'حذف ہو گیا' : 'Deleted'); }} className="neu-btn w-8 h-8 rounded-lg flex items-center justify-center text-red-400">
@@ -253,12 +262,39 @@ export default function Fees() {
             <div className="space-y-4">
               <div>
                 <label className="block text-sm font-semibold mb-1.5 opacity-70">{isUrdu ? 'طالبہ *' : 'Student *'}</label>
-                <div className="neu-inset-sm rounded-xl px-3 py-1">
-                  <select className="w-full bg-transparent border-none outline-none h-9 text-sm cursor-pointer" value={formData.studentId || ''} onChange={e => setFormData({ ...formData, studentId: e.target.value })}>
-                    <option value="">{isUrdu ? 'طالبہ منتخب کریں' : 'Select student...'}</option>
-                    {sessionStudents.map(s => <option key={s.id} value={s.id}>{s.name} ({s.rollNo || 'No Roll'})</option>)}
-                  </select>
+                <div className="relative">
+                  <div className="neu-inset-sm rounded-xl px-3 py-1">
+                    <input
+                      className="w-full bg-transparent border-none outline-none h-9 text-sm"
+                      placeholder={isUrdu ? 'نام یا رول نمبر تلاش کریں...' : 'Search by name or roll no...'}
+                      value={feeStudentSearch}
+                      onChange={e => { setFeeStudentSearch(e.target.value); setFormData({ ...formData, studentId: '' }); }}
+                    />
+                  </div>
+                  {feeStudentMatches.length > 0 && !formData.studentId && (
+                    <div className="absolute z-20 mt-2 w-full neu-raised rounded-xl p-2 space-y-1 max-h-60 overflow-y-auto">
+                      {feeStudentMatches.map(student => (
+                        <button
+                          type="button"
+                          key={student.id}
+                          className="w-full text-left px-3 py-2 rounded-lg hover:bg-[rgba(228,87,46,0.08)] text-sm"
+                          onClick={() => { setFormData({ ...formData, studentId: student.id }); setFeeStudentSearch(`${student.name} (${student.rollNo || 'No Roll'})`); }}
+                        >
+                          <span className="font-semibold">{student.name}</span>
+                          <span className="block text-xs opacity-60">Roll No: {student.rollNo || '—'} · {student.class}</span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
                 </div>
+                {feeStudentSearch.trim() && feeStudentMatches.length === 0 && !selectedFeeStudent && <p className="text-xs opacity-50 mt-1.5">{isUrdu ? 'کوئی طالبہ نہیں ملی' : 'No matching students found'}</p>}
+                {selectedFeeStudent && (
+                  <div className="neu-inset rounded-xl mt-2 px-3 py-2 text-xs flex flex-wrap gap-x-4 gap-y-1">
+                    <span><strong>{selectedFeeStudent.name}</strong></span>
+                    <span className="opacity-70">Roll No: {selectedFeeStudent.rollNo || '—'}</span>
+                    <span className="opacity-70">Class: {selectedFeeStudent.class}</span>
+                  </div>
+                )}
               </div>
               <div>
                 <label className="block text-sm font-semibold mb-1.5 opacity-70">{isUrdu ? 'ماہ *' : 'Month *'}</label>

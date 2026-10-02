@@ -1,4 +1,5 @@
 export type Language = 'en' | 'ur';
+export type Portal = 'school' | 'madrasa' | 'fees' | 'settings';
 
 export interface AcademicSession {
   id: string;
@@ -58,6 +59,12 @@ export interface Teacher {
   qualification: string;
   phone: string;
   cnic: string;
+  fatherName?: string;
+  email?: string;
+  address?: string;
+  assignedClasses?: string[];
+  joiningDate?: string;
+  employeeId?: string;
 }
 
 export interface FeeRecord {
@@ -65,8 +72,12 @@ export interface FeeRecord {
   studentId: string;
   amount: number;
   month: string;
-  status: 'paid' | 'pending';
+  status: 'paid' | 'partial' | 'pending';
   description?: string;
+  paidAmount?: number;
+  paymentDate?: string;
+  voucherNo?: string;
+  studentType?: 'school' | 'madrasa';
 }
 
 export interface Announcement {
@@ -106,6 +117,7 @@ export interface SubjectConfig {
 
 export interface State {
   language: Language;
+  portal: Portal | null;
   isAuthenticated: boolean;
   sidebarOpen: boolean;
   students: Student[];
@@ -121,7 +133,15 @@ export interface State {
   rollNumberRanges: RollNumberRange[];
   subjectConfigs: SubjectConfig[];
   adminPassword: string;
+  adminUsername: string;
   institutionProfile: InstitutionProfile;
+  schoolClasses: string[];
+  schoolSubjects: string[];
+  schoolSubjectsByClass: Record<string, string[]>;
+  schoolRollRange: { start: number; end: number };
+  madrasaClasses: string[];
+  madrasaSubjectsByClass: Record<string, string[]>;
+  madrasaTeachers: Teacher[];
 }
 
 export const MADRASA_CLASSES = [

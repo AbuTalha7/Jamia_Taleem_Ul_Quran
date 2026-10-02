@@ -66,6 +66,9 @@ export default function Home() {
   const [, navigate] = useLocation();
   const { t, state, toggleLanguage } = useApp();
   const isUrdu = state.language === 'ur';
+  const profile = state.institutionProfile;
+  const publicPhone = profile.phone;
+  const whatsappPhone = profile.phone.replace(/\D/g, '');
 
   useSEO({
     title: isUrdu
@@ -86,8 +89,8 @@ export default function Home() {
       alternateName: 'جامعہ تعلیم القرآن للبنات',
       url: typeof window !== 'undefined' ? window.location.origin : '',
       logo: '/logo.jpeg',
-      telephone: '+92 312 5654118',
-      email: 'tk353778@gmail.com',
+      telephone: profile.phone,
+      email: profile.email,
       address: {
         '@type': 'PostalAddress',
         addressLocality: 'Peshawar',
@@ -400,7 +403,7 @@ export default function Home() {
         <section className="max-w-6xl mx-auto px-4 md:px-8 relative z-10">
           <div className="neu-raised-lg rounded-[3rem] p-10 md:p-16 flex items-center justify-center bg-[rgba(228,87,46,0.03)] border border-white/50">
             <a 
-              href="https://wa.me/923125654118" 
+              href={`https://wa.me/${whatsappPhone}`}
               target="_blank" 
               rel="noreferrer"
               className="neu-btn-primary px-8 py-5 rounded-2xl text-white font-bold text-xl whitespace-nowrap flex items-center gap-3 shadow-xl hover:scale-105 transition-transform"
@@ -453,13 +456,13 @@ export default function Home() {
                 <div className="w-10 h-10 rounded-full neu-raised flex items-center justify-center text-[#E4572E]">
                   <Phone className="w-5 h-5" />
                 </div>
-                <span className="opacity-80 font-mono">+92 312 5654118</span>
+                <span className="opacity-80 font-mono">{publicPhone}</span>
               </li>
               <li className="flex items-center gap-4">
                 <div className="w-10 h-10 rounded-full neu-raised flex items-center justify-center text-[#E4572E]">
                   <Mail className="w-5 h-5" />
                 </div>
-                <span className="opacity-80">tk353778@gmail.com</span>
+                <span className="opacity-80">{profile.email}</span>
               </li>
             </ul>
           </div>

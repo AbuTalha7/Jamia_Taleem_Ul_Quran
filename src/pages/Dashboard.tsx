@@ -1,9 +1,11 @@
 import { motion } from 'framer-motion';
+import { useMemo, useState } from 'react';
 import {
-  Users, GraduationCap, Bell, CreditCard,
-  TrendingUp, AlertCircle, CheckCircle2, CalendarRange,
+  Users, GraduationCap, Bell, CreditCard, ChevronDown, Search,
+  CalendarRange,
 } from 'lucide-react';
 import { useApp } from '@/store';
+import { Cell, Legend, Pie, PieChart, ResponsiveContainer, Tooltip } from 'recharts';
 
 export default function Dashboard() {
   const { state, getDashboardStats, getActiveSession, getViewSession, getStudentsForView } = useApp();
@@ -13,11 +15,31 @@ export default function Dashboard() {
   const viewSession = getViewSession();
   const displaySession = viewSession ?? activeSession;
   const students = getStudentsForView();
+  const [studentsExpanded, setStudentsExpanded] = useState(false);
+  const [studentSearch, setStudentSearch] = useState('');
+  const [studentPage, setStudentPage] = useState(1);
 
   const visibleStudentIds = new Set(students.map(student => student.id));
   const visibleFees = state.feeRecords.filter(fee => visibleStudentIds.has(fee.studentId));
   const paidFees   = visibleFees.filter(f => f.status === 'paid').length;
   const pendingFees = visibleFees.filter(f => f.status === 'pending').length;
+  const feeBreakdown = [
+    { name: isUrdu ? 'ادا شدہ' : 'Paid', value: paidFees, color: '#27ae60' },
+    { name: isUrdu ? 'زیر التواء' : 'Pending', value: pendingFees, color: '#E4572E' },
+  ];
+  const admissionBreakdown = useMemo(() => {
+    const counts = new Map<string, number>();
+    students.forEach(student => counts.set(student.class || 'Unassigned', (counts.get(student.class || 'Unassigned') ?? 0) + 1));
+    return Array.from(counts, ([name, value]) => ({ name, value })).sort((a, b) => b.value - a.value);
+  }, [students]);
+  const filteredDashboardStudents = useMemo(() => {
+    const query = studentSearch.trim().toLowerCase();
+    return students.filter(student => !query || `${student.name} ${student.rollNo} ${student.class}`.toLowerCase().includes(query));
+  }, [students, studentSearch]);
+  const dashboardPageSize = 10;
+  const dashboardPageCount = Math.max(1, Math.ceil(filteredDashboardStudents.length / dashboardPageSize));
+  const dashboardStudents = filteredDashboardStudents.slice((studentPage - 1) * dashboardPageSize, studentPage * dashboardPageSize);
+  const chartColors = ['#E4572E', '#1C2E6B', '#27ae60', '#5c8aff', '#9b59b6', '#d99122', '#4b8f8c'];
 
   const statCards = [
     { icon: Users,         label: isUrdu ? 'کل طالبات'      : 'Total Students', value: stats.totalStudents,         color: '#E4572E' },
@@ -80,32 +102,14 @@ export default function Dashboard() {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Fee Status */}
+        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3, duration: 0.4 }} className="neu-raised rounded-2xl p-6">
+          <h3 className="font-bold text-lg mb-3">{isUrdu ? 'داخلہ کا جائزہ' : 'Student Admissions Overview'}</h3>
+          {admissionBreakdown.length > 0 ? <div className="h-64"><ResponsiveContainer width="100%" height="100%"><PieChart><Pie data={admissionBreakdown} dataKey="value" nameKey="name" cx="50%" cy="48%" outerRadius="72%" innerRadius="35%" label={({ name, value }) => `${name}: ${value}`} labelLine={false}>{admissionBreakdown.map((entry, index) => <Cell key={entry.name} fill={chartColors[index % chartColors.length]} />)}</Pie><Tooltip formatter={(value: number) => [`${value}`, isUrdu ? 'طالبات' : 'students']} /><Legend /></PieChart></ResponsiveContainer></div> : <p className="py-20 text-center text-sm opacity-50">{isUrdu ? 'ابھی کوئی طالبہ نہیں' : 'No students yet'}</p>}
+        </motion.div>
+        {/* Fee Chart */}
         <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.35, duration: 0.4 }} className="neu-raised rounded-2xl p-6">
-          <h3 className="font-bold text-lg mb-5 flex items-center gap-2">
-            <TrendingUp className="w-5 h-5 text-[#E4572E]" />
-            {isUrdu ? 'فیس کی صورتحال' : 'Fee Status'}
-          </h3>
-          <div className="space-y-4">
-            <div>
-              <div className="flex justify-between text-sm mb-2">
-                <span className="flex items-center gap-2"><CheckCircle2 className="w-4 h-4 text-[#27ae60]" />{isUrdu ? 'ادا شدہ' : 'Paid'}</span>
-                <span className="font-bold text-[#27ae60]">{paidFees}</span>
-              </div>
-              <div className="neu-inset rounded-full h-3 overflow-hidden">
-                <div className="h-full rounded-full transition-all duration-700" style={{ width: `${visibleFees.length ? (paidFees / visibleFees.length) * 100 : 0}%`, background: 'linear-gradient(90deg, #27ae60, #2ecc71)', boxShadow: '0 0 8px rgba(39,174,96,0.4)' }} />
-              </div>
-            </div>
-            <div>
-              <div className="flex justify-between text-sm mb-2">
-                <span className="flex items-center gap-2"><AlertCircle className="w-4 h-4 text-[#E4572E]" />{isUrdu ? 'زیرِ التواء' : 'Pending'}</span>
-                <span className="font-bold text-[#E4572E]">{pendingFees}</span>
-              </div>
-              <div className="neu-inset rounded-full h-3 overflow-hidden">
-                <div className="h-full rounded-full transition-all duration-700" style={{ width: `${visibleFees.length ? (pendingFees / visibleFees.length) * 100 : 0}%`, background: 'linear-gradient(90deg, #E4572E, #ff7a5c)', boxShadow: '0 0 8px rgba(228,87,46,0.4)' }} />
-              </div>
-            </div>
-          </div>
+          <h3 className="font-bold text-lg mb-3">{isUrdu ? 'فیس کا جائزہ' : 'Fee Overview'}</h3>
+          {visibleFees.length > 0 ? <div className="h-64"><ResponsiveContainer width="100%" height="100%"><PieChart><Pie data={feeBreakdown} dataKey="value" nameKey="name" cx="50%" cy="48%" outerRadius="72%" innerRadius="42%" label={({ name, value }) => `${name}: ${value}`} labelLine={false}>{feeBreakdown.map(entry => <Cell key={entry.name} fill={entry.color} />)}</Pie><Tooltip formatter={(value: number) => [`${value}`, isUrdu ? 'ریکارڈز' : 'records']} /><Legend /></PieChart></ResponsiveContainer></div> : <p className="py-20 text-center text-sm opacity-50">{isUrdu ? 'کوئی فیس ریکارڈ نہیں' : 'No fee records yet'}</p>}
         </motion.div>
 
         {/* Academic Sessions Summary */}
@@ -139,8 +143,15 @@ export default function Dashboard() {
 
       {/* Recent Students */}
       <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.5, duration: 0.4 }} className="neu-raised rounded-2xl p-6">
-        <h3 className="font-bold text-lg mb-5">{isUrdu ? 'حالیہ طالبات' : 'Recent Students'}</h3>
-        <div className="neu-inset rounded-2xl overflow-hidden">
+        <button className="w-full flex items-center justify-between gap-4 text-left" onClick={() => setStudentsExpanded(expanded => !expanded)} aria-expanded={studentsExpanded}>
+          <span className="font-bold text-lg">{isUrdu ? 'حالیہ طالبات' : 'Student List'} <span className="text-sm font-normal opacity-50">({students.length})</span></span>
+          <ChevronDown className={`w-5 h-5 text-[#E4572E] transition-transform ${studentsExpanded ? 'rotate-180' : ''}`} />
+        </button>
+        {studentsExpanded && <div className="mt-5 neu-inset rounded-2xl overflow-hidden">
+          <div className="p-3 flex flex-col sm:flex-row gap-3 justify-between">
+            <div className="neu-inset-sm rounded-xl px-3 flex items-center gap-2 h-10 w-full sm:w-80"><Search className="w-4 h-4 opacity-40" /><input className="bg-transparent outline-none text-sm w-full" placeholder={isUrdu ? 'نام، رول نمبر یا جماعت...' : 'Search name, roll no, or class...'} value={studentSearch} onChange={event => { setStudentSearch(event.target.value); setStudentPage(1); }} /></div>
+            <span className="text-xs opacity-50 self-center">{filteredDashboardStudents.length} {isUrdu ? 'نتائج' : 'matches'}</span>
+          </div>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
@@ -153,7 +164,7 @@ export default function Dashboard() {
                 </tr>
               </thead>
               <tbody>
-                {students.slice(-10).reverse().map(s => {
+                {dashboardStudents.map(s => {
                   const sessionName2 = state.academicSessions.find(ss => ss.id === s.sessionId)?.name ?? '-';
                   return (
                     <tr key={s.id} className="border-b border-[var(--neu-dark)]/10 hover:bg-[rgba(228,87,46,0.03)] transition-colors last:border-0">
@@ -175,7 +186,8 @@ export default function Dashboard() {
             </table>
             {students.length === 0 && <div className="p-8 text-center opacity-40 text-sm">{isUrdu ? 'ابھی کوئی طالبہ نہیں' : 'No students yet'}</div>}
           </div>
-        </div>
+          {filteredDashboardStudents.length > 0 && <div className="flex items-center justify-between gap-3 p-3 text-sm"><span className="opacity-50">Page {studentPage} of {dashboardPageCount}</span><div className="flex gap-2"><button className="neu-btn px-3 py-1.5 rounded-lg disabled:opacity-30" disabled={studentPage === 1} onClick={() => setStudentPage(page => page - 1)}>Previous</button><button className="neu-btn px-3 py-1.5 rounded-lg disabled:opacity-30" disabled={studentPage === dashboardPageCount} onClick={() => setStudentPage(page => page + 1)}>Next</button></div></div>}
+        </div>}
       </motion.div>
     </div>
   );

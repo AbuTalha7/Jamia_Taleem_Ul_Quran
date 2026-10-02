@@ -6,17 +6,18 @@ import { printHTML, PRINT_STYLES, institutionHeader } from '@/lib/print';
 import { toast } from 'sonner';
 import { Plus, Search, Edit, Printer, Trash2, Download, Wand2, IdCard, Hash } from 'lucide-react';
 import { motion } from 'framer-motion';
+import { formatAdminDate, isAdminDate, normalizeAdminDate } from '@/lib/adminDate';
 
 const CNIC_REGEX = /^\d{5}-\d{7}-\d{1}$/;
 const PHONE_REGEX = /^\d{11}$/;
 
-export default function Students() {
+export default function Students({ department }: { department?: 'school' | 'madrasa' } = {}) {
   const { state, dispatch, t, autoAssignRollNo, getActiveSession, getViewSession } = useApp();
   const isUrdu = state.language === 'ur';
   const activeSession = getActiveSession();
   const viewSession = getViewSession();
 
-  const [activeTab, setActiveTab] = useState<'All' | 'Madrasa' | 'School'>('All');
+  const [activeTab, setActiveTab] = useState<'All' | 'Madrasa' | 'School'>(department === 'madrasa' ? 'Madrasa' : department === 'school' ? 'School' : 'All');
   const [search, setSearch] = useState('');
   const [reportClass, setReportClass] = useState('');
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -26,7 +27,7 @@ export default function Students() {
   const blankForm = (): Partial<Student> => ({
     name: '', fatherName: '', dob: '', rollNo: '', cnic: '', phone: '',
     address: '',
-    class: '', section: '', department: 'school', status: 'active',
+    class: '', section: '', department: department ?? 'school', status: 'active',
     sessionId: activeSession?.id ?? undefined,
   });
 
@@ -38,15 +39,16 @@ export default function Students() {
     : state.students;
 
   const filteredStudents = sessionStudents.filter(s => {
-    if (activeTab === 'Madrasa' && s.department !== 'madrasa') return false;
-    if (activeTab === 'School' && s.department !== 'school') return false;
+    if (department && s.department !== department) return false;
+    if (!department && activeTab === 'Madrasa' && s.department !== 'madrasa') return false;
+    if (!department && activeTab === 'School' && s.department !== 'school') return false;
     if (search && !s.name.toLowerCase().includes(search.toLowerCase()) && !s.rollNo.toLowerCase().includes(search.toLowerCase())) return false;
     return true;
   });
 
   const handleEdit = (student: Student) => {
     setEditingStudent(student);
-    setFormData({ ...student });
+    setFormData({ ...student, dob: formatAdminDate(student.dob) });
     setErrors({});
     setDialogOpen(true);
   };
@@ -67,13 +69,13 @@ export default function Students() {
   };
 
   const handleAutoRollNo = () => {
-    if (!formData.department || !formData.class) {
-      toast.error(isUrdu ? 'پہلے شعبہ اور جماعت منتخب کریں' : 'Please select department and class first');
+    if (!formData.class) {
+      toast.error(isUrdu ? 'پہلے جماعت منتخب کریں' : 'Please select a class first');
       return;
     }
-    const assigned = autoAssignRollNo(formData.department as 'school' | 'madrasa', formData.class);
+    const assigned = autoAssignRollNo((department ?? formData.department ?? 'school') as 'school' | 'madrasa', formData.class);
     if (!assigned) {
-      toast.error(isUrdu ? 'اس جماعت کے رول نمبر ختم ہو گئے' : 'Roll number range exhausted for this class');
+      toast.error(isUrdu ? 'اس جماعت کے لیے رول نمبر رینج ترتیب نہیں دی گئی یا ختم ہو گئی' : 'No roll-number range is configured for this class, or the range is exhausted');
       return;
     }
     setFormData({ ...formData, rollNo: assigned });
@@ -98,13 +100,26 @@ export default function Students() {
 
   const validate = () => {
     const e: typeof errors = {};
+    const selectedDepartment = (department ?? formData.department ?? 'school') as 'school' | 'madrasa';
+    const range = state.rollNumberRanges.find(item => item.department === selectedDepartment && item.className === formData.class);
     if (!formData.dob) e.dob = isUrdu ? 'تاریخ پیدائش ضروری ہے' : 'Date of birth is required';
     if (formData.cnic && !CNIC_REGEX.test(formData.cnic)) e.cnic = 'Format: XXXXX-XXXXXXX-X';
     if (formData.phone && !PHONE_REGEX.test(formData.phone)) e.phone = '11-digit phone required';
+    if (selectedDepartment === 'school' && !range) {
+      e.rollNo = 'Configure a roll-number range for this class before admitting a student';
+    } else if (selectedDepartment === 'school' && !formData.rollNo) {
+      e.rollNo = 'Roll number is required for School students';
+    }
     if (formData.rollNo) {
-      // Check duplicate roll number
+      const numericRollNo = Number(formData.rollNo);
+      if (range && (!Number.isInteger(numericRollNo) || numericRollNo < range.rangeStart || numericRollNo > range.rangeEnd)) {
+        e.rollNo = `Roll number must be between ${range.rangeStart} and ${range.rangeEnd} for ${formData.class}`;
+      }
       const dup = state.students.find(s =>
-        s.rollNo === formData.rollNo && s.id !== editingStudent?.id
+        s.rollNo === formData.rollNo
+        && s.department === selectedDepartment
+        && s.class === formData.class
+        && s.id !== editingStudent?.id
       );
       if (dup) e.rollNo = isUrdu ? 'یہ رول نمبر پہلے سے موجود ہے' : 'This roll number is already in use';
     }
@@ -115,17 +130,21 @@ export default function Students() {
   const handleSave = () => {
     if (!formData.name?.trim()) { toast.error('Name is required'); return; }
     if (!formData.class) { toast.error('Class is required'); return; }
+    if (!isAdminDate(formData.dob ?? '')) {
+      setErrors({ ...errors, dob: isUrdu ? 'درمیانی تاریخ DD/MM/YYYY میں درج کریں' : 'Use the format DD/MM/YYYY' });
+      return;
+    }
     if (!validate()) return;
 
     if (editingStudent) {
-      dispatch({ type: 'UPDATE_STUDENT', payload: { ...editingStudent, ...formData } as Student });
+      dispatch({ type: 'UPDATE_STUDENT', payload: { ...editingStudent, ...formData, dob: normalizeAdminDate(formData.dob ?? '') } as Student });
       toast.success(isUrdu ? 'طالبہ کی معلومات اپڈیٹ ہوئیں' : 'Student updated successfully');
     } else {
       const newStudent: Student = {
         id: `std-${Date.now()}`,
         name: formData.name ?? '',
         fatherName: formData.fatherName ?? '',
-        dob: formData.dob ?? '',
+        dob: normalizeAdminDate(formData.dob ?? ''),
         rollNo: formData.rollNo ?? '',
         cnic: formData.cnic ?? '',
         phone: formData.phone ?? '',
@@ -137,7 +156,9 @@ export default function Students() {
         sessionId: formData.sessionId ?? activeSession?.id,
       };
       dispatch({ type: 'ADD_STUDENT', payload: newStudent });
-      toast.success(isUrdu ? 'نئی طالبہ شامل ہو گئی' : 'Student added successfully');
+      toast.success(isUrdu ? 'نئی طالبہ شامل ہو گئی' : 'Student added successfully', {
+        action: { label: isUrdu ? 'پرنٹ' : 'Print Record', onClick: () => printStudentCard(newStudent) },
+      });
     }
     setDialogOpen(false);
   };
@@ -262,7 +283,7 @@ export default function Students() {
           </div>
           <div class="field">
             <div class="field-label">Date of Birth</div>
-            <div class="field-value">${s.dob || '—'}</div>
+            <div class="field-value">${formatAdminDate(s.dob) || '—'}</div>
           </div>
           <div class="field">
             <div class="field-label">CNIC / B-Form</div>
@@ -367,7 +388,9 @@ export default function Students() {
     printHTML(html, `RollNoSlip_${s.rollNo || s.name}`);
   };
 
-  const classOptions = formData.department === 'madrasa' ? MADRASA_CLASSES : SCHOOL_CLASSES;
+  const classOptions = department === 'school'
+    ? state.schoolClasses
+    : formData.department === 'madrasa' ? state.madrasaClasses : state.schoolClasses;
   const classRosterStudents = reportClass ? sessionStudents.filter(s => s.class === reportClass) : [];
 
   const printClassRoster = () => {
@@ -400,7 +423,7 @@ export default function Students() {
           </button>
           <select value={reportClass} onChange={e => setReportClass(e.target.value)} className="neu-input rounded-xl px-3 py-2.5 text-sm">
             <option value="">Class roster...</option>
-            {[...SCHOOL_CLASSES, ...MADRASA_CLASSES].map(cls => <option key={cls} value={cls}>{cls}</option>)}
+              {(department === 'school' ? state.schoolClasses : department === 'madrasa' ? state.madrasaClasses : [...SCHOOL_CLASSES, ...MADRASA_CLASSES]).map(cls => <option key={cls} value={cls}>{cls}</option>)}
           </select>
           <button onClick={handleAdd} className="neu-btn-primary px-5 py-2.5 rounded-xl text-white font-semibold flex items-center gap-2">
             <Plus className="w-4 h-4" />
@@ -421,11 +444,11 @@ export default function Students() {
             dir={isUrdu ? 'rtl' : 'ltr'}
           />
         </div>
-        <div className="flex gap-2">
-          {(['All', 'Madrasa', 'School'] as const).map(tab => (
+        {!department && <div className="flex gap-2">
+          {['All', 'Madrasa', 'School'].map(tab => (
             <button
               key={tab}
-              onClick={() => setActiveTab(tab)}
+              onClick={() => setActiveTab(tab as 'All' | 'Madrasa' | 'School')}
               className={`px-4 py-2 rounded-xl text-sm font-semibold transition-all ${activeTab === tab ? 'neu-raised text-[#E4572E]' : 'neu-btn opacity-60'}`}
             >
               {tab === 'All' ? (isUrdu ? 'سب' : 'All') : tab === 'Madrasa' ? (isUrdu ? 'مدرسہ' : 'Madrasa') : (isUrdu ? 'سکول' : 'School')}
@@ -434,7 +457,7 @@ export default function Students() {
               </span>
             </button>
           ))}
-        </div>
+        </div>}
       </div>
 
       {/* Table */}
@@ -552,7 +575,7 @@ export default function Students() {
               <div>
                 <label className="block text-sm font-semibold mb-1.5 opacity-70">{isUrdu ? 'تاریخ پیدائش *' : 'Date of Birth *'}</label>
                 <div className="neu-inset-sm rounded-xl px-4 py-2.5 h-11 flex items-center">
-                  <input type="date" required className="w-full bg-transparent border-none outline-none text-sm" value={formData.dob || ''} onChange={e => setFormData({ ...formData, dob: e.target.value })} />
+                  <input type="text" inputMode="numeric" required placeholder="DD/MM/YYYY" maxLength={10} className="w-full bg-transparent border-none outline-none text-sm" value={formData.dob || ''} onChange={e => setFormData({ ...formData, dob: e.target.value.replace(/[^\d/]/g, '').slice(0, 10) })} />
                 </div>
                 {errors.dob && <p className="text-xs text-red-500 mt-1">{errors.dob}</p>}
               </div>
@@ -568,8 +591,8 @@ export default function Students() {
                   </select>
                 </div>
               </div>
-              {/* Department */}
-              <div>
+              {/* Department is intentionally omitted from the dedicated portal forms. */}
+              {!department && <div>
                 <label className="block text-sm font-semibold mb-1.5 opacity-70">{isUrdu ? 'شعبہ *' : 'Department *'}</label>
                 <div className="flex gap-2">
                   {(['school', 'madrasa'] as const).map(d => (
@@ -579,7 +602,7 @@ export default function Students() {
                     </button>
                   ))}
                 </div>
-              </div>
+              </div>}
               {/* Class */}
               <div>
                 <label className="block text-sm font-semibold mb-1.5 opacity-70">{isUrdu ? 'جماعت *' : 'Class *'}</label>
